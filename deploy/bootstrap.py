@@ -40,9 +40,18 @@ def install_deps() -> None:
 
 # ---------------------------------------------------------------- llama-server
 def _release_assets(tag: str) -> tuple[str, list[dict]]:
-    url = f"{GH_API}/tags/{tag}" if tag and tag != "latest" else f"{GH_API}/latest"
-    with urllib.request.urlopen(url) as r:
-        data = json.load(r)
+    def fetch(url: str) -> dict:
+        with urllib.request.urlopen(url) as r:
+            return json.load(r)
+
+    if tag and tag != "latest":
+        try:
+            data = fetch(f"{GH_API}/tags/{tag}")
+        except Exception:  # noqa: BLE001 — pinned tag missing: fall back to latest
+            print(f"release tag '{tag}' not found; falling back to latest")
+            data = fetch(f"{GH_API}/latest")
+    else:
+        data = fetch(f"{GH_API}/latest")
     return data["tag_name"], data.get("assets", [])
 
 
@@ -93,8 +102,15 @@ def _server_runs(server: Path) -> bool:
 
 def _build_from_source(tag: str, server: Path) -> Path:
     src = WORK / "llama.cpp"
-    if not src.exists():
-        sh(f"git clone --depth 1 --branch {tag} https://github.com/ggml-org/llama.cpp {src}")
+    if not (src / "CMakeLists.txt").exists():
+        shutil.rmtree(src, ignore_errors=True)
+        cloned = False
+        if tag and tag != "latest":
+            p = sh(f"git clone --depth 1 --branch {tag} https://github.com/ggml-org/llama.cpp {src}")
+            cloned = p.returncode == 0
+        if not cloned:
+            shutil.rmtree(src, ignore_errors=True)
+            sh(f"git clone --depth 1 https://github.com/ggml-org/llama.cpp {src}", check=True)
     sh(
         f"cmake -S {src} -B {src}/build -DGGML_CUDA=ON -DLLAMA_CURL=OFF "
         f"-DCMAKE_CUDA_ARCHITECTURES=75 -DCMAKE_BUILD_TYPE=Release",

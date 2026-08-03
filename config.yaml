@@ -100,7 +100,7 @@ kaggle:
     tensor_split: "1,1"
     parallel_slots: 2
     flash_attn: false      # T4 (compute 7.5) — leave off unless build supports it
-  llama_cpp_release: "b4996"   # pinned llama.cpp release tag for prebuilt/build
+  llama_cpp_release: "latest"  # llama.cpp release tag, or "latest"
   tunnel:
     provider: "cloudflared"    # cloudflared quick tunnel needs no account
     local_port: 8000
