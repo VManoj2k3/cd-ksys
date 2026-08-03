@@ -42,7 +42,7 @@ The UI shows "LLM: offline" and runs spell + lint + security layers only.
 
 1. Push this folder to a private Kaggle **Dataset** named `cd-koosys`
    (or a git repo).
-2. Open `kaggle/kaggle_koosys.ipynb` as a Kaggle notebook.
+2. Open `deploy/kaggle_koosys.ipynb` as a Kaggle notebook.
    Settings: **GPU T4 x2**, **Internet ON**.
 3. Run cells top to bottom. First run downloads the ~12 GB GGUF and the
    llama.cpp server (prebuilt CUDA binary, or ~20 min source build — cached).
