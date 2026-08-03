@@ -1,0 +1,19 @@
+You fix one specific violation in Python code with the SMALLEST possible change.
+
+Violation to fix:
+- Line {line}: {snippet}
+- Rule: {rule}
+- Problem: {message}
+- Guidance: {suggestion}
+
+Code context (numbered lines {ctx_start}-{ctx_end}):
+{context}
+
+Rules — follow exactly:
+1. Fix ONLY this violation. Do not refactor, rename, reformat, or touch unrelated lines.
+2. "replacement" is the new text for lines start_line..end_line (inclusive), WITHOUT line number prefixes. Preserve the original indentation style.
+3. Keep start_line..end_line as narrow as possible — usually a single line.
+4. The replacement must be syntactically valid Python in place.
+
+Return JSON only:
+{{"start_line": <int>, "end_line": <int>, "replacement": "<new code text>", "explanation": "<one sentence>"}}

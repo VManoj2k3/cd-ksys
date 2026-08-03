@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cd koosys — Code Review</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">⌘</span>
+    <h1>Cd koosys <span class="sub">code review</span></h1>
+  </div>
+  <div class="header-right">
+    <span id="llm-pill" class="pill pill-unknown">LLM: checking…</span>
+  </div>
+</header>
+
+<main>
+  <section class="editor-pane">
+    <div class="toolbar">
+      <input id="filename" type="text" value="snippet.py" spellcheck="false" aria-label="Filename">
+      <label class="btn btn-ghost" for="file-input">Upload .py</label>
+      <input id="file-input" type="file" accept=".py" hidden>
+      <button id="review-btn" class="btn btn-primary">Review code</button>
+    </div>
+    <div class="editor-wrap">
+      <pre id="gutter" aria-hidden="true"></pre>
+      <textarea id="code" spellcheck="false" placeholder="# Paste Python code here, or upload a file…"></textarea>
+    </div>
+  </section>
+
+  <section class="results-pane">
+    <div id="layers" class="layers hidden"></div>
+    <div id="summary" class="summary hidden"></div>
+    <div id="results" class="results">
+      <div class="empty-state">
+        <p>Paste code and hit <b>Review code</b>.</p>
+        <p class="dim">Deterministic layers (lint · security · spelling) plus LLM semantic review with adversarial verification. Every fix shown here has been applied, parsed, and re-checked before you see it.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

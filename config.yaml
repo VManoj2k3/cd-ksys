@@ -1,0 +1,106 @@
+# ============================================================
+# Cd koosys — Code Review System Configuration
+# ALL tunables live here. Code must not hardcode any of these.
+# ============================================================
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  max_file_size_kb: 512
+  job_ttl_seconds: 3600
+  diff_display_max_lines: 12
+
+languages:
+  enabled: ["python"]
+  python_extensions: [".py"]
+
+# ---------------- L0: Spell layer ----------------
+spell:
+  enabled: true
+  min_word_length: 4
+  # only auto-fix when the dictionary gives exactly one suggestion
+  autofix_single_suggestion_only: true
+  # extra words never to flag (project jargon, abbreviations)
+  allowlist: ["koosys", "params", "args", "kwargs", "utils", "config", "iter", "async"]
+  check_identifiers: true
+  check_comments: true
+  check_strings: true
+
+# ---------------- L1: Deterministic lint ----------------
+lint:
+  ruff:
+    enabled: true
+    # rule families: E/W pycodestyle, F pyflakes, B bugbear, N naming, PLE pylint-errors
+    select: ["E4", "E7", "E9", "F", "B", "N", "PLE"]
+    ignore: []
+  bandit:
+    enabled: true
+    # bandit confidence/severity floor to report (LOW|MEDIUM|HIGH)
+    min_severity: "LOW"
+    min_confidence: "MEDIUM"
+
+# ---------------- L1b: Hardcoding scanner (disabled per user decision;
+# flip to true to flag magic numbers / secrets / URLs in submitted code) ----
+hardcode:
+  enabled: false
+  magic_numbers:
+    enabled: true
+    allowed: [0, 1, -1, 2]
+    # don't flag numbers assigned to UPPER_CASE module constants
+    skip_constant_assignments: true
+    skip_default_args: true
+  strings:
+    flag_urls: true
+    flag_absolute_paths: true
+    flag_ip_addresses: true
+  secrets:
+    enabled: true
+
+# ---------------- L2/L3: LLM layers ----------------
+llm:
+  base_url: "http://127.0.0.1:8080/v1"
+  api_key: "none"
+  model: "qwen2.5-coder-14b-instruct"
+  mock: false            # true = skip LLM layers (deterministic only)
+  temperature: 0.0
+  max_tokens_review: 2048
+  max_tokens_verify: 512
+  max_tokens_fix: 1024
+  timeout_seconds: 300
+  max_parallel_requests: 2
+  chunk_lines: 220        # split large files into chunks of this many lines
+  # line-anchor validation: how far from claimed line to search for quoted snippet
+  anchor_search_radius: 2
+  verify:
+    enabled: true         # adversarial verification pass on every LLM finding
+  fix:
+    max_retries: 1        # regenerate a failed fix this many times
+
+review:
+  # categories the LLM is allowed to report (anything else is rejected)
+  llm_categories: ["logic_bug", "security", "api_misuse", "resource_leak", "concurrency", "error_handling"]
+  context_lines_for_verify: 12
+  context_lines_for_fix: 15
+
+paths:
+  prompts_dir: "prompts"
+  frontend_dir: "frontend"
+
+# ---------------- Kaggle deployment ----------------
+kaggle:
+  model_repo: "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF"
+  model_file: "Qwen2.5-Coder-14B-Instruct-Q6_K.gguf"
+  model_dir: "/kaggle/working/models"
+  llama_server:
+    host: "127.0.0.1"
+    port: 8080
+    ctx_size: 16384
+    n_gpu_layers: 999
+    split_mode: "layer"
+    tensor_split: "1,1"
+    parallel_slots: 2
+    flash_attn: false      # T4 (compute 7.5) — leave off unless build supports it
+  llama_cpp_release: "b4996"   # pinned llama.cpp release tag for prebuilt/build
+  tunnel:
+    provider: "cloudflared"    # cloudflared quick tunnel needs no account
+    local_port: 8000
