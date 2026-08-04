@@ -139,6 +139,32 @@ def get_llama_server() -> Path | str:
     )
 
 
+def _driver_stub_dir() -> str | None:
+    """Directory containing a linker-name libcuda.so (create one if needed)."""
+    import glob
+
+    for pat in ("/usr/lib/x86_64-linux-gnu/libcuda.so",
+                "/usr/local/nvidia/lib64/libcuda.so",
+                "/usr/local/cuda*/lib64/stubs/libcuda.so"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return str(Path(hits[-1]).parent)
+    # only the runtime name (libcuda.so.1) exists — symlink it somewhere writable
+    for pat in ("/usr/lib/x86_64-linux-gnu/libcuda.so.1",
+                "/usr/local/nvidia/lib64/libcuda.so.1",
+                "/usr/local/nvidia/lib/libcuda.so.1"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            link_dir = BIN_DIR / "driver-stub"
+            link_dir.mkdir(parents=True, exist_ok=True)
+            link = link_dir / "libcuda.so"
+            if not link.exists():
+                link.symlink_to(hits[-1])
+            print(f"created libcuda.so linker stub -> {hits[-1]}")
+            return str(link_dir)
+    return None
+
+
 def _find_nvcc() -> Path | None:
     import glob
 
@@ -304,9 +330,15 @@ def _build_from_source(tag: str, server: Path, nvcc: Path) -> Path:
     env = dict(os.environ)
     env["PATH"] = f"{nvcc.parent}:{env.get('PATH', '')}"
     env["CUDAToolkit_ROOT"] = str(cuda_root)
+    stub_flag = ""
+    stub_dir = _driver_stub_dir()
+    if stub_dir:
+        # lets CMake resolve CUDA::cuda_driver (needs linker-name libcuda.so)
+        stub_flag = f"-DCMAKE_LIBRARY_PATH={stub_dir} "
+        env["LIBRARY_PATH"] = f"{stub_dir}:{env.get('LIBRARY_PATH', '')}"
     sh(
         f"cmake -S {src} -B {src}/build -DGGML_CUDA=ON -DLLAMA_CURL=OFF "
-        f"-DCMAKE_CUDA_COMPILER={nvcc} -DCUDAToolkit_ROOT={cuda_root} "
+        f"-DCMAKE_CUDA_COMPILER={nvcc} -DCUDAToolkit_ROOT={cuda_root} {stub_flag}"
         f"-DCMAKE_CUDA_ARCHITECTURES=75 -DCMAKE_BUILD_TYPE=Release",
         check=True, env=env,
     )
