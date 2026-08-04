@@ -67,6 +67,9 @@ def get_llama_server() -> Path | str:
     if server.exists():
         print(f"llama-server cached at {server}")
         return server
+    if _probe_llama_cpp(verbose=False) == "gpu":
+        print("llama-cpp-python CUDA wheel already installed (cached)")
+        return "python-module"
     BIN_DIR.mkdir(parents=True, exist_ok=True)
     tag = str(CFG.get("kaggle.llama_cpp_release", "latest"))
 
@@ -141,6 +144,33 @@ def _find_nvcc() -> Path | None:
     return None
 
 
+def _probe_llama_cpp(verbose: bool = True) -> str:
+    """Check installed llama_cpp: returns 'gpu', 'cpu', or 'missing'."""
+    code = (
+        "import llama_cpp\n"
+        "print('VER', getattr(llama_cpp, '__version__', '?'))\n"
+        "f = getattr(llama_cpp, 'llama_supports_gpu_offload', None)\n"
+        "if f is None:\n"
+        "    try:\n"
+        "        from llama_cpp import llama_cpp as _lib\n"
+        "        f = getattr(_lib, 'llama_supports_gpu_offload', None)\n"
+        "    except Exception:\n"
+        "        pass\n"
+        "print('GPU', f() if f else 'unknown')\n"
+    )
+    chk = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    if chk.returncode != 0:
+        if verbose:
+            print("llama_cpp import failed:\n" + (chk.stderr or "").strip()[-600:])
+        return "missing"
+    if verbose:
+        print(chk.stdout.strip())
+    # 'unknown' means the probe API changed — trust the CUDA index it came from
+    if "GPU True" in chk.stdout or "GPU unknown" in chk.stdout:
+        return "gpu"
+    return "cpu"
+
+
 def _pip_cuda_wheel() -> bool:
     """Try prebuilt llama-cpp-python CUDA wheels (no compile). True on success."""
     indexes = CFG.get("kaggle.llama_cpp_pip_indexes", [
@@ -157,25 +187,41 @@ def _pip_cuda_wheel() -> bool:
         )
         if p.returncode != 0:
             continue
-        chk = subprocess.run(
-            [sys.executable, "-c",
-             "import llama_cpp; print(llama_cpp.llama_supports_gpu_offload())"],
-            capture_output=True, text=True,
-        )
-        if chk.returncode == 0 and "True" in chk.stdout:
-            print("llama-cpp-python CUDA wheel installed and GPU-capable")
+        status = _probe_llama_cpp()
+        if status == "gpu":
+            print("llama-cpp-python CUDA wheel installed and usable")
             return True
+        print(f"wheel from {idx} probed as '{status}'; removing")
         sh("pip uninstall -q -y llama-cpp-python")
     print("no usable prebuilt CUDA wheel")
     return False
 
 
+def _find_conda() -> str | None:
+    import glob
+
+    for name in ("conda", "mamba", "micromamba"):
+        p = shutil.which(name)
+        if p:
+            return p
+    for pat in ("/opt/conda*/bin/conda", "/opt/*conda*/bin/conda",
+                "/usr/local/*conda*/bin/conda", "/root/*conda*/bin/conda"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return hits[-1]
+    return None
+
+
 def _install_cuda_toolchain() -> None:
-    conda = shutil.which("conda") or "/opt/conda/bin/conda"
-    sh(
-        f"{conda} install -y -q -c nvidia cuda-nvcc cuda-cudart-dev "
-        f"cuda-profiler-api libcublas-dev",
-    )
+    conda = _find_conda()
+    if conda:
+        sh(
+            f"{conda} install -y -q -c nvidia cuda-nvcc cuda-cudart-dev "
+            f"cuda-profiler-api libcublas-dev",
+        )
+        return
+    print("no conda found; trying apt (Ubuntu CUDA toolkit — may be old but works for sm75)")
+    sh("apt-get update -qq && apt-get install -y -qq nvidia-cuda-toolkit")
 
 
 def _server_runs(server: Path) -> bool:
