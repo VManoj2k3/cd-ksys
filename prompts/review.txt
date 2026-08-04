@@ -5,6 +5,8 @@ Report violations ONLY in these categories: {categories}
 Rules — follow exactly:
 1. Report a violation ONLY if you are certain it is real. If unsure, do not report it. Missing a minor issue is acceptable; inventing one is not.
 2. Do NOT report style/formatting issues (a linter already handles those).
+   Do NOT report spelling mistakes or typos in names, comments, or strings —
+   a dedicated spell layer handles those.
 3. For each violation give the EXACT line number and copy the EXACT code text of that line into "snippet" (copy it character-for-character from the numbered listing, without the line number prefix).
 4. "severity" must be one of: low, medium, high, critical.
 5. If there are no violations, return {{"violations": []}}.

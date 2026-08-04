@@ -30,10 +30,26 @@ def _layer(job: ReviewJob, name: str) -> LayerStatus:
     return next(s for s in job.layers if s.name == name)
 
 
+_SPELLING_WORDS = ("misspell", "misspelled", "spelling", "spelled", "typo")
+
+
 def _dedup(deterministic: list[Violation], llm: list[Violation]) -> list[Violation]:
     """Drop LLM findings that duplicate a deterministic finding nearby."""
     kept = []
     for v in llm:
+        # spelling is the spell layer's job — an LLM 'finding' about a typo is
+        # either a duplicate (dict-confirmed) or unreliable (not in dict)
+        if any(w in v.message.lower() for w in _SPELLING_WORDS):
+            spell_dup = next(
+                (d for d in deterministic if d.layer == Layer.SPELL
+                 and abs(d.line - v.line) <= _DEDUP_WINDOW),
+                None,
+            )
+            if spell_dup is not None:
+                spell_dup.verification_note = (
+                    spell_dup.verification_note or ""
+                ) + " (independently confirmed by LLM review)"
+            continue  # drop either way
         dup = next(
             (d for d in deterministic if abs(d.line - v.line) <= _DEDUP_WINDOW
              and (d.layer == Layer.SECURITY) == (v.rule == "security")),

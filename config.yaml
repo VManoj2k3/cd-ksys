@@ -74,7 +74,7 @@ llm:
   verify:
     enabled: true         # adversarial verification pass on every LLM finding
   fix:
-    max_retries: 1        # regenerate a failed fix this many times
+    max_retries: 2        # regenerate a failed fix this many times
 
 review:
   # categories the LLM is allowed to report (anything else is rejected)

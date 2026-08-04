@@ -78,7 +78,7 @@ async def generate_fix(v: Violation, code: str, filename: str) -> Fix | None:
     hi = min(len(lines), v.line + ctx_n)
     prompt = _prompt("fix.txt").format(
         line=v.line, snippet=v.snippet, rule=v.rule, message=v.message,
-        suggestion=v.suggestion or "make the smallest correct change",
+        suggestion=v.suggestion or v.message or "make the smallest correct change",
         ctx_start=lo + 1, ctx_end=hi,
         context=_numbered(lines[lo:hi], lo + 1),
     )
