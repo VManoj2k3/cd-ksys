@@ -79,8 +79,10 @@ def get_llama_server() -> Path | str:
     """
     server = BIN_DIR / "llama-server"
     if server.exists():
-        print(f"llama-server cached at {server}")
-        return server
+        if _server_runs(server):
+            print(f"llama-server cached at {server}")
+            return server
+        print("cached llama-server incomplete; re-copying from build tree")
     if _probe_llama_cpp(verbose=False) == "gpu":
         print("llama-cpp-python CUDA wheel already installed (cached)")
         return "python-module"
@@ -343,10 +345,13 @@ def _build_from_source(tag: str, server: Path, nvcc: Path) -> Path:
         check=True, env=env,
     )
     sh(f"cmake --build {src}/build --target llama-server -j {os.cpu_count()}", check=True, env=env)
-    built = next((src / "build").rglob("llama-server"))
+    built = next(p for p in (src / "build").rglob("llama-server") if p.is_file())
     shutil.copy2(built, server)
-    for lib in built.parent.parent.rglob("*.so*"):
-        shutil.copy2(lib, BIN_DIR / lib.name)
+    # shared libs live next to the binary in build/bin — copy files only
+    # (never rglob the tree: node_modules contains DIRS matching *.so*)
+    for lib in built.parent.glob("*.so*"):
+        if lib.is_file():
+            shutil.copy2(lib, BIN_DIR / lib.name)
     server.chmod(0o755)
     return server
 
