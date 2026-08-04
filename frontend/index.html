@@ -20,9 +20,17 @@
 <main>
   <section class="editor-pane">
     <div class="toolbar">
+      <select id="language" aria-label="Language">
+        <option value="py">Python</option>
+        <option value="c">C</option>
+        <option value="cpp">C++</option>
+        <option value="java">Java</option>
+        <option value="ts">TypeScript</option>
+        <option value="js">JavaScript</option>
+      </select>
       <input id="filename" type="text" value="snippet.py" spellcheck="false" aria-label="Filename">
-      <label class="btn btn-ghost" for="file-input">Upload .py</label>
-      <input id="file-input" type="file" accept=".py" hidden>
+      <label class="btn btn-ghost" for="file-input">Upload</label>
+      <input id="file-input" type="file" accept=".py,.c,.h,.cpp,.cc,.cxx,.hpp,.hh,.java,.ts,.tsx,.js,.jsx,.mjs" hidden>
       <button id="review-btn" class="btn btn-primary">Review code</button>
     </div>
     <div class="editor-wrap">

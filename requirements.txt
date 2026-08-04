@@ -9,3 +9,5 @@ ruff>=0.6
 bandit>=1.7.9
 codespell>=2.3
 huggingface_hub>=0.24
+flawfinder>=2.0
+javalang>=0.13

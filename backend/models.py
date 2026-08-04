@@ -61,6 +61,7 @@ class ReviewJob(BaseModel):
     job_id: str
     state: str = "queued"          # queued | running | done | error
     filename: str = ""
+    language: str = ""
     code: str = ""
     layers: list[LayerStatus] = Field(default_factory=list)
     violations: list[Violation] = Field(default_factory=list)

@@ -37,6 +37,67 @@ def install_deps() -> None:
     check_gpu()
     sh(f"pip install -q -r {APP_DIR / 'requirements.txt'}")
     print("deps installed")
+    install_language_tools()
+
+
+def install_language_tools() -> None:
+    """Install per-language analysis toolchains (best-effort, config-driven).
+
+    Each language degrades gracefully if its tool is missing — the plugin
+    simply skips that layer — so failures here are warnings, not fatal.
+    """
+    import shutil as _sh
+
+    enabled = set(CFG.get("languages.enabled", []))
+
+    # C/C++ : cppcheck, clang-tidy (apt), flawfinder (pip, in requirements)
+    if {"c", "cpp"} & enabled:
+        if not (_sh.which("cppcheck") and _sh.which("clang-tidy")):
+            sh("apt-get update -qq && apt-get install -y -qq cppcheck clang-tidy")
+        print(f"  cppcheck={_sh.which('cppcheck')} clang-tidy={_sh.which('clang-tidy')} "
+              f"flawfinder={_sh.which('flawfinder')}")
+
+    # Java : PMD from Maven Central (bundled zip, no maven needed)
+    if "java" in enabled:
+        _install_pmd()
+
+    # TypeScript/JS : eslint toolchain via npm (installed on first use, but
+    # warm it now so the first review isn't slow)
+    if "typescript" in enabled:
+        try:
+            sys.path.insert(0, str(APP_DIR))
+            from backend.languages.typescript import ensure_eslint
+            d = ensure_eslint()
+            print(f"  eslint toolchain: {'ready' if d else 'FAILED (JS/TS lint will be skipped)'}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  eslint setup failed ({exc}); JS/TS lint will be skipped")
+
+
+def _install_pmd() -> None:
+    import shutil as _sh
+
+    if _sh.which("pmd"):
+        print(f"  pmd={_sh.which('pmd')}")
+        return
+    tools = Path("/kaggle/working/tools")
+    existing = sorted(tools.glob("pmd-bin-*/bin/pmd")) if tools.exists() else []
+    if existing:
+        print(f"  pmd={existing[-1]}")
+        return
+    ver = str(CFG.get("java.pmd.version", "7.7.0"))
+    url = (f"https://github.com/pmd/pmd/releases/download/pmd_releases%2F{ver}"
+           f"/pmd-dist-{ver}-bin.zip")
+    tools.mkdir(parents=True, exist_ok=True)
+    zpath = tools / "pmd.zip"
+    try:
+        urllib.request.urlretrieve(url, zpath)
+        with zipfile.ZipFile(zpath) as z:
+            z.extractall(tools)
+        pmd = next(tools.glob("pmd-bin-*/bin/pmd"))
+        pmd.chmod(0o755)
+        print(f"  pmd installed at {pmd}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  PMD install failed ({exc}); Java uses AST checks only")
 
 
 def check_gpu() -> None:

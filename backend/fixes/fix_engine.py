@@ -14,7 +14,6 @@ Failed fixes are retried (config llm.fix.max_retries), then surfaced as
 """
 from __future__ import annotations
 
-import ast
 import asyncio
 from pathlib import Path
 
@@ -52,31 +51,32 @@ def apply_patch(code: str, start_line: int, end_line: int, replacement: str) -> 
     return "\n".join(patched) + ("\n" if code.endswith("\n") else "")
 
 
-def _still_present(v: Violation, patched: str, filename: str) -> bool:
+def _still_present(v: Violation, patched: str, filename: str, plugin) -> bool:
     """Re-run the violation's own detector on the patched code."""
     from backend.layers.hardcode import run_hardcode_layer
-    from backend.layers.static_lint import run_bandit, run_ruff
 
     if v.layer == Layer.SECURITY:
-        found = run_bandit(patched, filename)
+        found = plugin.security(patched, filename)
     elif v.layer == Layer.HARDCODE:
         found = run_hardcode_layer(patched)
     elif v.layer == Layer.LINT:
-        found = run_ruff(patched, filename)
+        found = plugin.lint(patched, filename)
     else:
         return False  # LLM findings have no deterministic re-check here
     window = 3
     return any(f.rule == v.rule and abs(f.line - v.line) <= window for f in found)
 
 
-async def generate_fix(v: Violation, code: str, filename: str) -> Fix | None:
+async def generate_fix(v: Violation, code: str, filename: str, plugin) -> Fix | None:
     """LLM minimal patch for one violation, with validation loop."""
     lines = code.splitlines()
     ctx_n = int(CFG.get("review.context_lines_for_fix", 15))
     retries = int(CFG.get("llm.fix.max_retries", 1))
+    baseline_ok, _ = plugin.validate_syntax(code)
     lo = max(0, v.line - 1 - ctx_n)
     hi = min(len(lines), v.line + ctx_n)
     prompt = _prompt("fix.txt").format(
+        language=plugin.display,
         line=v.line, snippet=v.snippet, rule=v.rule, message=v.message,
         suggestion=v.suggestion or v.message or "make the smallest correct change",
         ctx_start=lo + 1, ctx_end=hi,
@@ -101,28 +101,30 @@ async def generate_fix(v: Violation, code: str, filename: str) -> Fix | None:
         if not (start - ctx_n <= v.line <= end + ctx_n):
             continue
         patched = apply_patch(code, start, end, replacement)
-        try:
-            ast.parse(patched)
-        except SyntaxError:
+        ok, syntax_note = plugin.validate_syntax(patched)
+        if baseline_ok and not ok:
+            continue  # fix broke the syntax — reject
+        if _still_present(v, patched, filename, plugin):
             continue
-        if _still_present(v, patched, filename):
-            continue
+        syntax_label = (syntax_note if ok
+                        else "syntax gate skipped (original file didn't parse)")
         return Fix(
             start_line=start, end_line=end, replacement=replacement,
             validated=True,
-            validation_notes="AST parse OK; detector re-run confirms violation resolved"
+            validation_notes=f"{syntax_label}; detector re-run confirms violation resolved"
             if v.layer in (Layer.LINT, Layer.SECURITY, Layer.HARDCODE)
-            else "AST parse OK; minimal patch applied cleanly",
+            else f"{syntax_label}; minimal patch applied cleanly",
         )
     return None
 
 
 async def fill_missing_fixes(
-    violations: list[Violation], code: str, filename: str, llm_up: bool
+    violations: list[Violation], code: str, filename: str, llm_up: bool, plugin
 ) -> None:
     if not llm_up:
         return
     targets = [v for v in violations if v.fix is None]
-    results = await asyncio.gather(*(generate_fix(v, code, filename) for v in targets))
+    results = await asyncio.gather(
+        *(generate_fix(v, code, filename, plugin) for v in targets))
     for v, fix in zip(targets, results):
         v.fix = fix

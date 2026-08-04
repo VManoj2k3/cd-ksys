@@ -11,8 +11,52 @@ server:
   diff_display_max_lines: 12
 
 languages:
-  enabled: ["python"]
-  python_extensions: [".py"]
+  enabled: ["python", "c", "cpp", "java", "typescript"]
+
+# ---------------- C / C++ (primary languages; AUTOSAR-guided) ----------------
+c:
+  std: "c11"
+  cppcheck: { enabled: true, enable: "warning,portability" }
+  clang_tidy:
+    enabled: true
+    checks: ["bugprone-*", "cert-*", "-cert-err34-c",
+             "-bugprone-easily-swappable-parameters"]
+  flawfinder: { enabled: true, min_level: 2 }
+  ruleset: "autosar"    # injects AUTOSAR rule subset into LLM review
+  llm_categories: ["memory_safety", "undefined_behavior", "resource_leak",
+                   "concurrency", "security", "api_misuse", "error_handling",
+                   "logic_bug", "autosar"]
+
+cpp:
+  std: "c++14"          # AUTOSAR C++14 target
+  cppcheck: { enabled: true, enable: "warning,portability" }
+  clang_tidy:
+    enabled: true
+    checks: ["bugprone-*", "cert-*", "cppcoreguidelines-*",
+             "-cppcoreguidelines-avoid-magic-numbers",
+             "-cppcoreguidelines-pro-type-vararg",
+             "-cppcoreguidelines-pro-bounds-array-to-pointer-decay",
+             "-bugprone-easily-swappable-parameters"]
+  flawfinder: { enabled: true, min_level: 2 }
+  ruleset: "autosar"
+  llm_categories: ["memory_safety", "undefined_behavior", "resource_leak",
+                   "concurrency", "security", "api_misuse", "error_handling",
+                   "logic_bug", "autosar"]
+
+# ---------------- Java ----------------
+java:
+  pmd:
+    enabled: true
+    path: ""            # auto-discovered; Kaggle bootstrap downloads it
+    version: "7.7.0"
+    ruleset: "rulesets/java/quickstart.xml"
+  llm_categories: ["logic_bug", "security", "api_misuse", "resource_leak",
+                   "concurrency", "error_handling"]
+
+# ---------------- TypeScript / JavaScript ----------------
+typescript:
+  llm_categories: ["logic_bug", "security", "api_misuse", "resource_leak",
+                   "concurrency", "error_handling"]
 
 # ---------------- L0: Spell layer ----------------
 spell:
@@ -85,6 +129,7 @@ review:
 paths:
   prompts_dir: "prompts"
   frontend_dir: "frontend"
+  tools_dir: ""          # empty = <project>/.tools (eslint toolchain etc.)
 
 # ---------------- Kaggle deployment ----------------
 kaggle:

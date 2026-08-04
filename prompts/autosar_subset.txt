@@ -1,0 +1,13 @@
+AUTOSAR C++14 guided rule subset (report category "autosar" ONLY for clear violations of these):
+- A18-5-1/A18-5-2: no direct malloc/free/new/delete in application code; use RAII / smart pointers.
+- A5-1-1: no literal values except in type/constant initializations (flag only blatant magic literals in logic).
+- M5-0-3 / integral conversions: no implicit narrowing conversions losing value range.
+- A4-7-1: no integer overflow / wraparound in arithmetic.
+- M0-3-2 / A15: every error return code must be checked; no ignored return values from functions that report errors.
+- A15-1-2 / M15: no exceptions thrown across module boundaries; destructors must not throw.
+- A5-2-2: no C-style casts; use static_cast/const_cast/reinterpret_cast explicitly.
+- M7-5-1/M7-5-2: never return reference/pointer to a local (dangling); no dangling lambda captures.
+- A8-4-x: parameters passed appropriately (no expensive copies of large objects where const ref intended and it changes behavior/perf materially).
+- A12-8-2 rule of five: classes managing resources must define/delete copy+move consistently.
+- Uninitialized variables: every variable initialized before use.
+- A2-11-1: volatile is not a synchronization mechanism; flag data races and missing synchronization.

@@ -40,7 +40,11 @@ main { flex: 1; display: flex; min-height: 0; }
 .toolbar { display: flex; gap: 8px; padding: 10px; background: var(--bg2); align-items: center; }
 #filename {
   background: var(--bg3); color: var(--text); border: 1px solid var(--border);
-  border-radius: 6px; padding: 6px 10px; font-family: var(--mono); font-size: 13px; width: 160px;
+  border-radius: 6px; padding: 6px 10px; font-family: var(--mono); font-size: 13px; width: 150px;
+}
+#language {
+  background: var(--bg3); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 8px; font-size: 13px;
 }
 .btn {
   border: 1px solid var(--border); background: var(--bg3); color: var(--text);

@@ -75,10 +75,11 @@ def _anchor(claimed_line: int, snippet: str, lines: list[str]) -> int | None:
     return None
 
 
-async def run_llm_review(code: str, filename: str, stats: dict) -> list[Violation]:
+async def run_llm_review(code: str, filename: str, stats: dict,
+                         plugin) -> list[Violation]:
     lines = code.splitlines()
     chunk_size = int(CFG.get("llm.chunk_lines", 220))
-    categories = CFG.get("review.llm_categories", [])
+    categories = plugin.llm_categories()
     template = _prompt("review.txt")
     max_tokens = int(CFG.get("llm.max_tokens_review", 2048))
 
@@ -86,10 +87,12 @@ async def run_llm_review(code: str, filename: str, stats: dict) -> list[Violatio
     for start in range(0, len(lines), chunk_size):
         chunk = lines[start:start + chunk_size]
         prompt = template.format(
+            language=plugin.display,
             categories=", ".join(categories),
+            extra_rules=plugin.llm_extra_rules() or "None.",
             start_line=start + 1,
             end_line=start + len(chunk),
-            filename=filename or "snippet.py",
+            filename=filename or "snippet",
             code_chunk=_numbered(chunk, start + 1),
         )
         tasks.append(CLIENT.chat_json(prompt, REVIEW_SCHEMA, max_tokens))

@@ -28,12 +28,23 @@ function jumpToLine(line) {
   setTimeout(() => renderGutter(), 2500);
 }
 
-/* ---------------- upload ---------------- */
+/* ---------------- language / upload ---------------- */
+const EXT_TO_LANG = { py: "py", c: "c", h: "c", cpp: "cpp", cc: "cpp", cxx: "cpp",
+  hpp: "cpp", hh: "cpp", java: "java", ts: "ts", tsx: "ts", js: "js", jsx: "js", mjs: "js" };
+
+$("language").addEventListener("change", () => {
+  const ext = $("language").value;
+  const name = $("filename").value || "snippet";
+  $("filename").value = name.replace(/\.[A-Za-z]+$/, "") + "." + ext;
+});
+
 $("file-input").addEventListener("change", async (e) => {
   const f = e.target.files[0];
   if (!f) return;
   codeEl.value = await f.text();
   $("filename").value = f.name;
+  const ext = (f.name.split(".").pop() || "").toLowerCase();
+  if (EXT_TO_LANG[ext]) $("language").value = EXT_TO_LANG[ext];
   renderGutter();
 });
 
@@ -120,6 +131,7 @@ function renderResults(job) {
   vs.forEach((v) => { bySev[v.severity] = (bySev[v.severity] || 0) + 1; });
   summaryEl.classList.remove("hidden");
   summaryEl.innerHTML =
+    (job.language ? `<span>lang: <b>${esc(job.language)}</b></span>` : "") +
     `<span><b>${vs.length}</b> violation${vs.length === 1 ? "" : "s"}</span>` +
     ["critical", "high", "medium", "low", "info"]
       .filter((s) => bySev[s])

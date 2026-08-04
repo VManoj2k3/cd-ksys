@@ -5,10 +5,10 @@ import asyncio
 
 from backend.app_config import CFG
 from backend.fixes.fix_engine import fill_missing_fixes
+from backend.languages.base import plugin_for
 from backend.layers.hardcode import run_hardcode_layer
 from backend.layers.llm_review import run_llm_review
 from backend.layers.spell import run_spell_layer
-from backend.layers.static_lint import run_bandit, run_ruff
 from backend.llm.client import CLIENT
 from backend.models import Layer, LayerStatus, ReviewJob, Violation
 
@@ -70,6 +70,13 @@ async def run_review(job: ReviewJob) -> None:
     job.layers = _make_layers()
     stats: dict = {}
 
+    plugin = plugin_for(filename)
+    if plugin is None:
+        job.state = "error"
+        job.error = f"Unsupported file type: {filename}"
+        return
+    job.language = plugin.display
+
     async def run_sync(fn, *args):
         return await asyncio.to_thread(fn, *args)
 
@@ -80,33 +87,35 @@ async def run_review(job: ReviewJob) -> None:
             st.state = "skipped"
             return []
         st.state = "running"
-        out = await run_sync(run_spell_layer, code)
+        out = await run_sync(run_spell_layer, code, plugin)
         st.found, st.state = len(out), "done"
         return out
 
-    async def do_ruff():
+    async def do_lint():
         st = _layer(job, "lint")
-        if not CFG.get("lint.ruff.enabled", True):
-            st.state = "skipped"
-            return []
         st.state = "running"
-        out = await run_sync(run_ruff, code, filename)
+        try:
+            out = await run_sync(plugin.lint, code, filename)
+        except Exception as exc:  # noqa: BLE001 — tool failure must not kill job
+            st.state, st.detail = "error", str(exc)[:200]
+            return []
         st.found, st.state = len(out), "done"
         return out
 
-    async def do_bandit():
+    async def do_security():
         st = _layer(job, "security")
-        if not CFG.get("lint.bandit.enabled", True):
-            st.state = "skipped"
-            return []
         st.state = "running"
-        out = await run_sync(run_bandit, code, filename)
+        try:
+            out = await run_sync(plugin.security, code, filename)
+        except Exception as exc:  # noqa: BLE001
+            st.state, st.detail = "error", str(exc)[:200]
+            return []
         st.found, st.state = len(out), "done"
         return out
 
     async def do_hardcode():
         st = _layer(job, "hardcode")
-        if not CFG.get("hardcode.enabled", False):
+        if plugin.name != "python" or not CFG.get("hardcode.enabled", False):
             st.state = "skipped"
             st.detail = "disabled in config"
             return []
@@ -115,10 +124,10 @@ async def run_review(job: ReviewJob) -> None:
         st.found, st.state = len(out), "done"
         return out
 
-    spell_v, ruff_v, bandit_v, hard_v = await asyncio.gather(
-        do_spell(), do_ruff(), do_bandit(), do_hardcode()
+    spell_v, lint_v, sec_v, hard_v = await asyncio.gather(
+        do_spell(), do_lint(), do_security(), do_hardcode()
     )
-    deterministic = [*spell_v, *ruff_v, *bandit_v, *hard_v]
+    deterministic = [*spell_v, *lint_v, *sec_v, *hard_v]
 
     # ---- LLM layers ----
     llm_st = _layer(job, "llm_review")
@@ -130,7 +139,7 @@ async def run_review(job: ReviewJob) -> None:
     else:
         llm_st.state = "running"
         try:
-            llm_v = await run_llm_review(code, filename, stats)
+            llm_v = await run_llm_review(code, filename, stats, plugin)
             llm_v = _dedup(deterministic, llm_v)
             llm_st.found, llm_st.state = len(llm_v), "done"
             llm_st.detail = (
@@ -149,7 +158,7 @@ async def run_review(job: ReviewJob) -> None:
     fx = _layer(job, "fixes")
     fx.state = "running"
     try:
-        await fill_missing_fixes(violations, code, filename, job.llm_available)
+        await fill_missing_fixes(violations, code, filename, job.llm_available, plugin)
         fx.state = "done"
         fx.found = sum(1 for v in violations if v.fix is not None)
         fx.detail = f"{fx.found}/{len(violations)} violations have validated fixes"

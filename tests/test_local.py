@@ -15,8 +15,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from backend.languages.python_lang import PythonPlugin  # noqa: E402
 from backend.layers.spell import run_spell_layer  # noqa: E402
-from backend.layers.static_lint import run_bandit, run_ruff  # noqa: E402
+
+_PY = PythonPlugin()
+
+
+def run_ruff(code, filename):
+    return _PY.lint(code, filename)
+
+
+def run_bandit(code, filename):
+    return _PY.security(code, filename)
+
+
+def _spell(code):
+    return run_spell_layer(code, _PY)
+
 
 FAILURES: list[str] = []
 
@@ -32,7 +47,7 @@ def main() -> int:
     clean = (ROOT / "tests" / "sample_clean.py").read_text()
 
     print("== sample_bad.py — planted violations must be found ==")
-    spell = run_spell_layer(bad)
+    spell = _spell(bad)
     rules = [(v.rule, v.line) for v in spell]
     print(f"  spell found: {[(v.rule, v.line, v.message[:50]) for v in spell]}")
     check(any(v.rule == "spell-identifier" and "recieve" in v.message for v in spell),
@@ -66,7 +81,7 @@ def main() -> int:
     check("B307" in bcodes, "bandit: eval usage (B307)")
 
     print("\n== sample_clean.py — must be silent (false-positive check) ==")
-    fp = run_spell_layer(clean) + run_ruff(clean, "sample_clean.py") + run_bandit(clean, "sample_clean.py")
+    fp = _spell(clean) + run_ruff(clean, "sample_clean.py") + run_bandit(clean, "sample_clean.py")
     for v in fp:
         print(f"  UNEXPECTED: L{v.line} [{v.layer.value}/{v.rule}] {v.message}")
     check(not fp, f"clean sample produced {len(fp)} violations (expected 0)")

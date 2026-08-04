@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.app_config import CFG, PROJECT_ROOT
+from backend.languages.base import all_extensions, language_names
 from backend.llm.client import CLIENT
 from backend.models import ReviewJob
 from backend.orchestrator import run_review
@@ -21,7 +22,7 @@ app = FastAPI(title="Cd koosys — Code Review")
 _FRONTEND = PROJECT_ROOT / CFG.get("paths.frontend_dir", "frontend")
 _MAX_KB = int(CFG.get("server.max_file_size_kb", 512))
 _TTL = int(CFG.get("server.job_ttl_seconds", 3600))
-_ALLOWED_EXT = tuple(CFG.get("languages.python_extensions", [".py"]))
+_ALLOWED_EXT = tuple(all_extensions())
 
 _jobs: dict[str, ReviewJob] = {}
 _job_times: dict[str, float] = {}
@@ -70,7 +71,7 @@ async def submit_review(req: ReviewRequest):
 async def submit_upload(file: UploadFile = File(...)):
     name = file.filename or "upload.py"
     if not name.lower().endswith(_ALLOWED_EXT):
-        raise HTTPException(400, f"Phase 1 accepts only: {', '.join(_ALLOWED_EXT)}")
+        raise HTTPException(400, f"Supported file types: {', '.join(_ALLOWED_EXT)}")
     raw = await file.read()
     try:
         code = raw.decode("utf-8")
@@ -93,7 +94,8 @@ async def health():
     return {
         "status": "ok",
         "llm_available": await CLIENT.health(),
-        "languages": CFG.get("languages.enabled", []),
+        "languages": language_names(),
+        "extensions": list(_ALLOWED_EXT),
     }
 
 
