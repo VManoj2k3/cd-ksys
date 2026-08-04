@@ -34,6 +34,11 @@ _CPPCHECK_SKIP_IDS = {
     "constVariable", "constVariablePointer", "constParameter",
     "constParameterPointer", "constParameterReference", "useStlAlgorithm",
     "useInitializationList", "passedByValue", "unusedStructMember",
+    # analysis-limitation artifacts on standalone files (NOT code bugs):
+    # macros from headers we can't see, encoding bytes, missing includes.
+    # Real syntax is validated separately by the gcc/g++ gate.
+    "unknownMacro", "syntaxError", "preprocessorErrorDirective",
+    "toomanyconfigs", "internalAstError", "cppcheckError",
 }
 _CPPCHECK_SEV = {
     "error": Severity.HIGH, "warning": Severity.MEDIUM,
