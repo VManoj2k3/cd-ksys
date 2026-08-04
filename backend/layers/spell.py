@@ -85,8 +85,8 @@ def run_spell_layer(code: str) -> list[Violation]:
 
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(code).readline))
-    except (tokenize.TokenizeError, SyntaxError, IndentationError):
-        tokens = []
+    except (tokenize.TokenError, SyntaxError, IndentationError, ValueError):
+        tokens = []  # unparseable code: skip spell layer, never crash the job
 
     counter = 0
 
