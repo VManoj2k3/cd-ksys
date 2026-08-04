@@ -46,6 +46,17 @@ class LanguagePlugin:
         """Extra ruleset text injected into the review prompt (e.g. AUTOSAR)."""
         return ""
 
+    def tmp_name(self, filename: str) -> str:
+        """Temp filename guaranteed to carry a valid extension for this
+        language's tools — routing may pick a plugin whose extension the
+        supplied filename doesn't match (e.g. pasted code named snippet.py)."""
+        from pathlib import Path
+
+        p = Path(filename or "")
+        if p.suffix.lower() in self.extensions and p.name:
+            return p.name
+        return f"snippet{self.extensions[0]}"
+
 
 _REGISTRY: list[LanguagePlugin] = []
 
@@ -70,6 +81,28 @@ def plugin_for(filename: str) -> LanguagePlugin | None:
     ext = Path(filename or "").suffix.lower()
     for plugin in _plugins():
         if ext in plugin.extensions:
+            return plugin
+    return None
+
+
+# UI dropdown value -> plugin name
+_UI_LANG_MAP = {
+    "py": "python", "python": "python",
+    "c": "c", "h": "c",
+    "cpp": "cpp", "c++": "cpp",
+    "java": "java",
+    "ts": "typescript", "tsx": "typescript", "typescript": "typescript",
+    "js": "typescript", "jsx": "typescript", "javascript": "typescript",
+}
+
+
+def plugin_by_language(name: str) -> LanguagePlugin | None:
+    """Resolve an explicit language selection (UI dropdown) to a plugin."""
+    target = _UI_LANG_MAP.get((name or "").strip().lower())
+    if target is None:
+        return None
+    for plugin in _plugins():
+        if plugin.name == target:
             return plugin
     return None
 

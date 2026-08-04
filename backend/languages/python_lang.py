@@ -17,7 +17,18 @@ class PythonPlugin(LanguagePlugin):
     extensions = (".py",)
 
     def lint(self, code: str, filename: str) -> list[Violation]:
-        return run_ruff(code, filename)
+        out = run_ruff(code, filename)
+        # collapse a syntax-error flood into ONE finding — a non-Python or
+        # badly broken file otherwise yields hundreds of 'invalid-syntax' rows
+        syn = [v for v in out if v.rule in ("invalid-syntax", "E999")]
+        if len(syn) > 3:
+            # file doesn't parse as Python — every other ruff finding is noise
+            first = syn[0]
+            first.message = (f"File does not parse as Python ({len(syn)} syntax "
+                             f"errors). If this isn't Python, pick the correct "
+                             f"language from the dropdown.")
+            return [first]
+        return out
 
     def security(self, code: str, filename: str) -> list[Violation]:
         return run_bandit(code, filename)

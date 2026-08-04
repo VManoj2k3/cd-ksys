@@ -5,7 +5,7 @@ import asyncio
 
 from backend.app_config import CFG
 from backend.fixes.fix_engine import fill_missing_fixes
-from backend.languages.base import plugin_for
+from backend.languages.base import plugin_by_language, plugin_for
 from backend.layers.hardcode import run_hardcode_layer
 from backend.layers.llm_review import run_llm_review
 from backend.layers.spell import run_spell_layer
@@ -70,10 +70,13 @@ async def run_review(job: ReviewJob) -> None:
     job.layers = _make_layers()
     stats: dict = {}
 
-    plugin = plugin_for(filename)
+    # explicit UI selection wins over filename inference (a C file pasted
+    # under a .py name must still review as C)
+    plugin = plugin_by_language(job.requested_language) or plugin_for(filename)
     if plugin is None:
         job.state = "error"
-        job.error = f"Unsupported file type: {filename}"
+        job.error = (f"Could not determine language for '{filename}'. "
+                     f"Pick a language from the dropdown.")
         return
     job.language = plugin.display
 

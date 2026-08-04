@@ -67,7 +67,7 @@ class _CFamilyPlugin(LanguagePlugin):
         lines = code.splitlines()
         enable = CFG.get(f"{self.name}.cppcheck.enable", "warning,portability")
         with tempfile.TemporaryDirectory() as td:
-            f = Path(td) / (filename or f"snippet{self.extensions[0]}")
+            f = Path(td) / self.tmp_name(filename)
             f.write_text(code, encoding="utf-8")
             proc = subprocess.run(
                 ["cppcheck", f"--enable={enable}",
@@ -106,7 +106,7 @@ class _CFamilyPlugin(LanguagePlugin):
         ]))
         lines = code.splitlines()
         with tempfile.TemporaryDirectory() as td:
-            f = Path(td) / (filename or f"snippet{self.extensions[0]}")
+            f = Path(td) / self.tmp_name(filename)
             f.write_text(code, encoding="utf-8")
             proc = subprocess.run(
                 ["clang-tidy", str(f), f"-checks=-*,{checks}", "--quiet",
@@ -145,7 +145,7 @@ class _CFamilyPlugin(LanguagePlugin):
         ])
         lines = code.splitlines()
         with tempfile.TemporaryDirectory() as td:
-            f = Path(td) / (filename or f"snippet{self.extensions[0]}")
+            f = Path(td) / self.tmp_name(filename)
             f.write_text(code, encoding="utf-8")
             proc = subprocess.run(
                 ["flawfinder", "--csv", str(f)], capture_output=True, text=True)

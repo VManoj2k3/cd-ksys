@@ -74,7 +74,11 @@ reviewBtn.addEventListener("click", async () => {
     const r = await fetch("/api/review", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, filename: $("filename").value || "snippet.py" }),
+      body: JSON.stringify({
+        code,
+        filename: $("filename").value || "snippet.py",
+        language: $("language").value,   // dropdown is authoritative
+      }),
     });
     if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
     const { job_id } = await r.json();

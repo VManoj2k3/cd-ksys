@@ -31,6 +31,7 @@ _job_times: dict[str, float] = {}
 class ReviewRequest(BaseModel):
     code: str
     filename: str = "snippet.py"
+    language: str = ""   # explicit UI selection; overrides filename inference
 
 
 def _gc_jobs() -> None:
@@ -40,13 +41,14 @@ def _gc_jobs() -> None:
         _job_times.pop(jid, None)
 
 
-def _start_job(code: str, filename: str) -> ReviewJob:
+def _start_job(code: str, filename: str, language: str = "") -> ReviewJob:
     _gc_jobs()
     if len(code.encode()) > _MAX_KB * 1024:
         raise HTTPException(413, f"File exceeds {_MAX_KB} KB limit")
     if not code.strip():
         raise HTTPException(400, "Empty code")
-    job = ReviewJob(job_id=uuid.uuid4().hex, filename=filename, code=code)
+    job = ReviewJob(job_id=uuid.uuid4().hex, filename=filename, code=code,
+                    requested_language=language)
     _jobs[job.job_id] = job
     _job_times[job.job_id] = time.time()
 
@@ -63,7 +65,7 @@ def _start_job(code: str, filename: str) -> ReviewJob:
 
 @app.post("/api/review")
 async def submit_review(req: ReviewRequest):
-    job = _start_job(req.code, req.filename)
+    job = _start_job(req.code, req.filename, req.language)
     return {"job_id": job.job_id}
 
 

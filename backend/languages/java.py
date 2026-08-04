@@ -135,7 +135,7 @@ class JavaPlugin(LanguagePlugin):
         ruleset = CFG.get("java.pmd.ruleset", "rulesets/java/quickstart.xml")
         lines = code.splitlines()
         with tempfile.TemporaryDirectory() as td:
-            f = Path(td) / (filename or "Snippet.java")
+            f = Path(td) / self.tmp_name(filename)
             f.write_text(code, encoding="utf-8")
             proc = subprocess.run(
                 [pmd, "check", "-d", str(f), "-R", ruleset, "-f", "json",
