@@ -144,6 +144,28 @@ def _find_nvcc() -> Path | None:
     return None
 
 
+def _cuda_env() -> dict:
+    """Env with pip-provided NVIDIA runtime libs on LD_LIBRARY_PATH."""
+    import glob
+    import site
+
+    dirs: list[str] = []
+    for base in {*site.getsitepackages(), site.getusersitepackages()}:
+        dirs.extend(glob.glob(f"{base}/nvidia/*/lib"))
+    env = dict(os.environ)
+    if dirs:
+        env["LD_LIBRARY_PATH"] = ":".join(dirs + [env.get("LD_LIBRARY_PATH", "")])
+    return env
+
+
+def _ensure_cuda_runtime_libs() -> None:
+    """libcudart/libcublas via pip — the CUDA wheels link against these."""
+    pkgs = CFG.get("kaggle.cuda_runtime_pip_packages", [
+        "nvidia-cuda-runtime-cu12", "nvidia-cublas-cu12",
+    ])
+    sh(f"pip install -q {' '.join(pkgs)}")
+
+
 def _probe_llama_cpp(verbose: bool = True) -> str:
     """Check installed llama_cpp: returns 'gpu', 'cpu', or 'missing'."""
     code = (
@@ -158,7 +180,9 @@ def _probe_llama_cpp(verbose: bool = True) -> str:
         "        pass\n"
         "print('GPU', f() if f else 'unknown')\n"
     )
-    chk = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    chk = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, env=_cuda_env()
+    )
     if chk.returncode != 0:
         if verbose:
             print("llama_cpp import failed:\n" + (chk.stderr or "").strip()[-600:])
@@ -179,6 +203,7 @@ def _pip_cuda_wheel() -> bool:
         "https://abetlen.github.io/llama-cpp-python/whl/cu122",
         "https://abetlen.github.io/llama-cpp-python/whl/cu121",
     ])
+    _ensure_cuda_runtime_libs()
     for idx in indexes:
         print(f"trying prebuilt CUDA wheel from {idx}")
         p = sh(
@@ -200,15 +225,20 @@ def _pip_cuda_wheel() -> bool:
 def _find_conda() -> str | None:
     import glob
 
-    for name in ("conda", "mamba", "micromamba"):
+    candidates: list[str] = []
+    for name in ("conda", "micromamba", "mamba"):
         p = shutil.which(name)
         if p:
-            return p
+            candidates.append(p)
     for pat in ("/opt/conda*/bin/conda", "/opt/*conda*/bin/conda",
                 "/usr/local/*conda*/bin/conda", "/root/*conda*/bin/conda"):
-        hits = sorted(glob.glob(pat))
-        if hits:
-            return hits[-1]
+        candidates.extend(sorted(glob.glob(pat)))
+    for cand in candidates:
+        # Kaggle ships an unrelated 'mamba' (a test framework) — verify identity
+        v = subprocess.run([cand, "--version"], capture_output=True, text=True)
+        out = (v.stdout + v.stderr).lower()
+        if v.returncode == 0 and ("conda" in out or "mamba " in out or "micromamba" in out):
+            return cand
     return None
 
 
@@ -298,7 +328,7 @@ def start_llama(server: Path | str, model: Path) -> subprocess.Popen:
         ts = str(ls.get("tensor_split") or "").strip()
         if ts:
             cmd += ["--tensor_split", *ts.split(",")]
-        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=_cuda_env())
     else:
         cmd = [
             str(server),
