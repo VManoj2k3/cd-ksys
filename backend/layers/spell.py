@@ -67,6 +67,27 @@ def _check_word(word: str, min_len: int, allow: set[str]) -> tuple[list[str], bo
     return _dictionary().get(lw)
 
 
+def _derive_project_vocabulary(tokens, min_identifiers: int) -> set[str]:
+    """Learn the codebase's own naming conventions dynamically.
+
+    A subword used across >= min_identifiers DISTINCT identifiers is treated
+    as intentional project vocabulary (e.g. 'Shft' in ShftSpdSig, ShftSpdCtrl,
+    ...). A one-off dictionary misspelling (a real typo like 'Treshold') never
+    reaches that count, so it stays reportable. No hardcoded word list — the
+    accepted terms are inferred from the code under review.
+    """
+    from collections import defaultdict
+
+    subword_to_idents: dict[str, set[str]] = defaultdict(set)
+    for tok in tokens:
+        if tok.kind == "identifier":
+            for sub in _split_subwords(tok.text):
+                if len(sub) >= 2:
+                    subword_to_idents[sub.lower()].add(tok.text)
+    return {sw for sw, idents in subword_to_idents.items()
+            if len(idents) >= min_identifiers}
+
+
 def run_spell_layer(code: str, plugin: LanguagePlugin) -> list[Violation]:
     cfg = CFG
     if not cfg.get("spell.enabled", True):
@@ -74,6 +95,15 @@ def run_spell_layer(code: str, plugin: LanguagePlugin) -> list[Violation]:
     min_len = int(cfg.get("spell.min_word_length", 4))
     allow = {w.lower() for w in cfg.get("spell.allowlist", [])}
     single_only = bool(cfg.get("spell.autofix_single_suggestion_only", True))
+
+    tokens = plugin.spell_tokens(code)
+
+    # DYNAMIC false-positive suppression: learn the codebase's own naming
+    # conventions instead of relying on a hardcoded abbreviation list.
+    if cfg.get("spell.dynamic_vocabulary", True):
+        vocab = _derive_project_vocabulary(
+            tokens, int(cfg.get("spell.vocab_min_identifiers", 3)))
+        allow = allow | vocab
 
     violations: list[Violation] = []
     seen_identifiers: set[str] = set()
@@ -87,7 +117,7 @@ def run_spell_layer(code: str, plugin: LanguagePlugin) -> list[Violation]:
         counter += 1
         return f"spell-{counter}"
 
-    for tok in plugin.spell_tokens(code):
+    for tok in tokens:
         if tok.kind == "identifier" and cfg.get("spell.check_identifiers", True):
             if tok.text in seen_identifiers:
                 continue

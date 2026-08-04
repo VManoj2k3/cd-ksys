@@ -64,111 +64,19 @@ typescript:
 spell:
   enabled: true
   min_word_length: 4
-  # only auto-fix when the dictionary gives exactly one suggestion
   autofix_single_suggestion_only: true
   check_identifiers: true
   check_comments: true
   check_strings: true
-  # Domain abbreviations never to flag. Dictionary spell-checking cannot
-  # tell an intentional abbreviation (Shft=Shaft) from a typo (recieve), so
-  # embedded/automotive/robotics conventions are allow-listed here. Add your
-  # project's own terms to kill false positives on identifiers/comments.
-  allowlist:
-    # generic programming
-    - koosys
-    - params
-    - args
-    - kwargs
-    - utils
-    - config
-    - iter
-    - async
-    - impl
-    - init
-    - idx
-    - ptr
-    - buf
-    - len
-    - tmp
-    - num
-    - addr
-    - func
-    - param
-    - arg
-    - str
-    - dev
-    - drv
-    - mgr
-    - msg
-    - err
-    - val
-    - var
-    - calc
-    - prev
-    - dst
-    - src
-    - alloc
-    - dealloc
-    - struct
-    - enum
-    - typedef
-    # embedded / automotive / AUTOSAR
-    - shft
-    - strat
-    - spd
-    - ctrl
-    - sig
-    - ovi
-    - pwr
-    - pwru
-    - ustate
-    - appl
-    - cfg
-    - req
-    - resp
-    - rte
-    - ecu
-    - can
-    - lin
-    - obd
-    - dtc
-    - diag
-    - nvm
-    - eep
-    - adc
-    - dac
-    - pwm
-    - gpio
-    - isr
-    - irq
-    - reg
-    - periph
-    - volt
-    - amp
-    - freq
-    - accel
-    - decel
-    - torq
-    - rpm
-    - odo
-    - plausib
-    # robotics / ROS
-    - ukf
-    - ekf
-    - odom
-    - imu
-    - lidar
-    - slam
-    - quat
-    - theta
-    - yaw
-    - traj
-    - vel
-    - accel
-    - covar
-    - gaussian
-    - landmark
-    - waypoint
+  # DYNAMIC false-positive suppression — no hardcoded word lists.
+  # The checker learns each codebase's own naming conventions: a subword used
+  # across >= vocab_min_identifiers DISTINCT identifiers is treated as project
+  # vocabulary (e.g. 'Shft' in ShftSpdSig/ShftSpdCtrl/...), while a rare
+  # dictionary misspelling (a genuine typo like 'Treshold') stays reportable.
+  dynamic_vocabulary: true
+  vocab_min_identifiers: 3
+  # optional manual overrides (empty by default — the code teaches the rules)
+  allowlist: []
 
 # ---------------- L1: Deterministic lint ----------------
 lint:
