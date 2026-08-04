@@ -392,7 +392,7 @@ def start_llama(server: Path | str, model: Path) -> subprocess.Popen:
         ts = str(ls.get("tensor_split") or "").strip()
         if ts:
             cmd += ["--tensor_split", *ts.split(",")]
-        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=_cuda_env())
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=_cuda_env(), start_new_session=True)
     else:
         cmd = [
             str(server),
@@ -408,7 +408,7 @@ def start_llama(server: Path | str, model: Path) -> subprocess.Popen:
         if ls.get("flash_attn"):
             cmd.append("--flash-attn")
         env = dict(os.environ, LD_LIBRARY_PATH=f"{Path(server).parent}:{os.environ.get('LD_LIBRARY_PATH', '')}")
-        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env)
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
 
     # model load takes minutes for a 12 GB GGUF — poll the OpenAI endpoint
     _wait_http(f"http://{host}:{port}/v1/models", 900, "llama server")
@@ -421,6 +421,7 @@ def start_backend() -> subprocess.Popen:
         [sys.executable, "-m", "backend.main"],
         cwd=APP_DIR, stdout=log, stderr=subprocess.STDOUT,
         env=dict(os.environ, PYTHONPATH=str(APP_DIR)),
+        start_new_session=True,
     )
     port = CFG.get("server.port")
     _wait_http(f"http://127.0.0.1:{port}/api/health", 60, "backend")
@@ -441,7 +442,7 @@ def start_tunnel() -> str:
     log = open(logfile, "w")
     subprocess.Popen(
         [str(cf), "tunnel", "--url", f"http://127.0.0.1:{port}", "--no-autoupdate"],
-        stdout=log, stderr=subprocess.STDOUT,
+        stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
     )
     url_re = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
     for _ in range(60):
