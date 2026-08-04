@@ -34,8 +34,22 @@ def sh(cmd: str, **kw) -> subprocess.CompletedProcess:
 
 def install_deps() -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    check_gpu()
     sh(f"pip install -q -r {APP_DIR / 'requirements.txt'}")
     print("deps installed")
+
+
+def check_gpu() -> None:
+    """Fail fast if no GPU is attached — everything downstream needs one."""
+    p = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True)
+    out = (p.stdout or "") + (p.stderr or "")
+    print(out.strip() or "nvidia-smi produced no output")
+    if p.returncode != 0 or "GPU" not in p.stdout:
+        raise RuntimeError(
+            "NO GPU ATTACHED to this session. In Kaggle: Settings (right panel) "
+            "-> Accelerator -> 'GPU T4 x2', wait for the session to restart, "
+            "then re-run this cell. (Also check your weekly GPU quota.)"
+        )
 
 
 # ---------------------------------------------------------------- llama-server
@@ -152,6 +166,10 @@ def _cuda_env() -> dict:
     dirs: list[str] = []
     for base in {*site.getsitepackages(), site.getusersitepackages()}:
         dirs.extend(glob.glob(f"{base}/nvidia/*/lib"))
+    # driver library (libcuda.so.1) locations used by various GPU images
+    for pat in ("/usr/local/nvidia/lib64", "/usr/local/nvidia/lib",
+                "/usr/lib/x86_64-linux-gnu", "/usr/local/cuda*/compat"):
+        dirs.extend(glob.glob(pat))
     env = dict(os.environ)
     if dirs:
         env["LD_LIBRARY_PATH"] = ":".join(dirs + [env.get("LD_LIBRARY_PATH", "")])
@@ -186,6 +204,8 @@ def _probe_llama_cpp(verbose: bool = True) -> str:
     if chk.returncode != 0:
         if verbose:
             print("llama_cpp import failed:\n" + (chk.stderr or "").strip()[-600:])
+        if "libcuda.so" in (chk.stderr or ""):
+            return "no-driver"  # environment problem, not a wheel problem
         return "missing"
     if verbose:
         print(chk.stdout.strip())
@@ -216,6 +236,13 @@ def _pip_cuda_wheel() -> bool:
         if status == "gpu":
             print("llama-cpp-python CUDA wheel installed and usable")
             return True
+        if status == "no-driver":
+            # every index will fail identically — stop wasting downloads
+            raise RuntimeError(
+                "libcuda.so.1 (GPU driver) not found. This almost always means "
+                "the session has NO GPU attached. Kaggle: Settings -> Accelerator "
+                "-> 'GPU T4 x2', then re-run."
+            )
         print(f"wheel from {idx} probed as '{status}'; removing")
         sh("pip uninstall -q -y llama-cpp-python")
     print("no usable prebuilt CUDA wheel")
