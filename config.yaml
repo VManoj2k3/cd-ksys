@@ -101,6 +101,16 @@ kaggle:
     parallel_slots: 2
     flash_attn: false      # T4 (compute 7.5) — leave off unless build supports it
   llama_cpp_release: "latest"  # llama.cpp release tag, or "latest"
+  nvcc_search_paths:
+    - "/usr/local/cuda*/bin/nvcc"
+    - "/opt/cuda*/bin/nvcc"
+    - "/opt/conda/bin/nvcc"
+    - "/opt/conda/pkgs/cuda-nvcc*/bin/nvcc"
+  llama_cpp_pip_indexes:
+    - "https://abetlen.github.io/llama-cpp-python/whl/cu125"
+    - "https://abetlen.github.io/llama-cpp-python/whl/cu124"
+    - "https://abetlen.github.io/llama-cpp-python/whl/cu122"
+    - "https://abetlen.github.io/llama-cpp-python/whl/cu121"
   tunnel:
     provider: "cloudflared"    # cloudflared quick tunnel needs no account
     local_port: 8000
