@@ -177,6 +177,7 @@ review:
   # bound expensive per-finding LLM work so large files complete in time
   max_llm_findings: 40      # keep highest-severity N before verify
   max_fixes: 30             # cap LLM fix-generation calls per review
+  fix_budget_seconds: 300   # fix stage is best-effort; findings always shown
 
 paths:
   prompts_dir: "prompts"

@@ -231,18 +231,29 @@ async def run_review(job: ReviewJob) -> None:
     except Exception:  # noqa: BLE001 — grouping is cosmetic, never fail the job
         pass
 
-    # ---- fixes for anything still missing one ----
+    # attach findings NOW, before the expensive fix stage — so a slow/timed-out
+    # fix stage can never throw away the findings the user already earned.
+    job.violations = violations
+    job.stats = stats
+
+    # ---- fixes for anything still missing one (bounded, best-effort) ----
     fx = _layer(job, "fixes")
     fx.state = "running"
+    fix_budget = int(CFG.get("review.fix_budget_seconds", 300))
     try:
-        await fill_missing_fixes(violations, code, filename, job.llm_available, plugin)
+        await asyncio.wait_for(
+            fill_missing_fixes(violations, code, filename, job.llm_available, plugin),
+            timeout=fix_budget)
         fx.state = "done"
         fx.found = sum(1 for v in violations if v.fix is not None)
         fx.detail = f"{fx.found}/{len(violations)} violations have validated fixes"
+    except asyncio.TimeoutError:
+        fx.state = "partial"
+        fx.found = sum(1 for v in violations if v.fix is not None)
+        fx.detail = (f"fix generation exceeded {fix_budget}s — showing all findings; "
+                     f"{fx.found} have fixes, the rest need manual changes")
     except Exception as exc:  # noqa: BLE001
         fx.state = "error"
         fx.detail = str(exc)
 
-    job.violations = violations
-    job.stats = stats
     job.state = "done"
