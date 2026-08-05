@@ -30,6 +30,37 @@ def _layer(job: ReviewJob, name: str) -> LayerStatus:
     return next(s for s in job.layers if s.name == name)
 
 
+_SEV_RANK = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+
+
+def _merge_same_line_llm(violations: list[Violation]) -> list[Violation]:
+    """Collapse multiple LLM findings on the SAME line into one, so a line
+    with e.g. both a null-check and an overflow issue yields a single finding
+    with a combined message and ONE fix — not two conflicting fixes."""
+    from backend.models import Layer
+
+    by_line: dict[int, Violation] = {}
+    order: list[int] = []
+    passthrough: list[Violation] = []
+    for v in violations:
+        if v.layer != Layer.LLM:
+            passthrough.append(v)
+            continue
+        if v.line not in by_line:
+            by_line[v.line] = v
+            order.append(v.line)
+        else:
+            base = by_line[v.line]
+            extra = v.message.strip().rstrip(".")
+            if extra.lower() not in base.message.lower():
+                base.message = base.message.rstrip(".") + ". Also: " + v.message
+            if base.verification_note and v.verification_note:
+                base.verification_note = base.verification_note.rstrip(".")
+            if _SEV_RANK.get(v.severity.value, 0) > _SEV_RANK.get(base.severity.value, 0):
+                base.severity = v.severity
+    return passthrough + [by_line[ln] for ln in order]
+
+
 def _dedup_same_finding(violations: list[Violation]) -> list[Violation]:
     """Collapse identical findings reported at multiple use-sites — e.g.
     cppcheck reports 'Uninitialized variable: total' at every use. Keep the
@@ -156,6 +187,7 @@ async def run_review(job: ReviewJob) -> None:
         try:
             llm_v = await run_llm_review(code, filename, stats, plugin)
             llm_v = _dedup(deterministic, llm_v)
+            llm_v = _merge_same_line_llm(llm_v)
             llm_st.found, llm_st.state = len(llm_v), "done"
             llm_st.detail = (
                 f"raw {stats.get('llm_raw_findings', 0)} → "
