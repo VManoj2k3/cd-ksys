@@ -56,14 +56,23 @@ import re as _re
 _CONTROL_FLOW = ("return", "break", "continue", "goto", "throw", "yield")
 
 
+_COMPOUND_ASSIGN = ("+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=")
+
+
 def _fix_deletes_logic(original_lines: list[str], replacement: str) -> bool:
-    """True if the replacement drops control flow that was in the replaced
-    span — e.g. turning `return total;` into `int total = 0;` clears the
-    warning but silently removes the return. Legitimate call replacements
-    (strcpy->strncpy) are NOT flagged."""
+    """True if the replacement silently deletes logic that was in the replaced
+    span rather than fixing the defect — e.g. turning `return total;` or
+    `total += values[i];` into `int total = 0;` clears the warning but removes
+    the return / the accumulation. Legitimate transforms (strcpy->strncpy,
+    `int total;`->`int total = 0;`, `i <= n`->`i < n`) are NOT flagged."""
     orig = "\n".join(original_lines)
+    # control-flow keyword present in original but gone from replacement
     for kw in _CONTROL_FLOW:
         if _re.search(rf"\b{kw}\b", orig) and not _re.search(rf"\b{kw}\b", replacement):
+            return True
+    # a compound assignment (accumulation/update) dropped entirely
+    for op in _COMPOUND_ASSIGN:
+        if op in orig and op not in replacement:
             return True
     return False
 
