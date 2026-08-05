@@ -69,4 +69,5 @@ class ReviewJob(BaseModel):
     violations: list[Violation] = Field(default_factory=list)
     error: str = ""
     llm_available: bool = True
+    notice: str = ""     # non-fatal advisory shown to the user (e.g. generated file)
     stats: dict = Field(default_factory=dict)

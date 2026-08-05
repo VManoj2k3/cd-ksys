@@ -127,6 +127,17 @@ async def run_llm_review(code: str, filename: str, stats: dict,
     stats["llm_rejected_bad_anchor"] = rejected_anchor
     stats["llm_rejected_bad_category"] = rejected_category
 
+    # bound the expensive verify+fix work on large/noisy files: keep the
+    # highest-severity findings, note the rest. Prevents a 3000-line file from
+    # sending hundreds of findings through per-item LLM verification.
+    _sev_rank = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2,
+                 Severity.LOW: 1, Severity.INFO: 0}
+    max_findings = int(CFG.get("review.max_llm_findings", 40))
+    if len(anchored) > max_findings:
+        anchored.sort(key=lambda v: _sev_rank.get(v.severity, 0), reverse=True)
+        stats["llm_capped"] = len(anchored) - max_findings
+        anchored = anchored[:max_findings]
+
     if not CFG.get("llm.verify.enabled", True):
         for v in anchored:
             v.verification_note = "verify pass disabled"

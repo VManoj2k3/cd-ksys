@@ -184,7 +184,11 @@ function renderResults(job) {
   const ordered = [...groups.entries()].sort(
     (a, b) => a[1][0].line - b[1][0].line);
 
-  resultsEl.innerHTML = (job.llm_available ? "" :
+  resultsEl.innerHTML =
+    (job.notice ? `<div class="banner">${esc(job.notice)}</div>` : "") +
+    (job.stats && job.stats.llm_capped
+      ? `<div class="banner">${job.stats.llm_capped} lower-severity LLM finding(s) not shown (capped for performance on this file).</div>` : "") +
+    (job.llm_available ? "" :
     '<div class="banner">llama-server offline — showing deterministic findings only; no LLM fixes generated.</div>') +
     ordered.map(([fn, items]) => {
       const label = fn === "(file scope)" ? "(file scope)" : `${esc(fn)}()`;
