@@ -1,0 +1,41 @@
+# On-prem deployment for a 2x GPU server. Code never leaves your network.
+#
+#   cp deploy/.env.example deploy/.env      # fill in secrets + LDAP
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# The service listens ONLY on the host's loopback by default (127.0.0.1:8000);
+# front it with your internal reverse proxy / put it on the VPN interface.
+services:
+  koosys:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        CUDA_ARCH: "${CUDA_ARCH:-120}"     # Blackwell (RTX 50-series)
+    image: koosys:latest
+    restart: unless-stopped
+    # bind to loopback only — change to an internal IP behind your proxy/VPN
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      # ---- app config overrides (read by config.yaml via env, see below) ----
+      KOOSYS_SESSION_SECRET: "${KOOSYS_SESSION_SECRET:?set in deploy/.env}"
+      KOOSYS_CONFIG: "/app/config.deploy.yaml"
+      HF_TOKEN: "${HF_TOKEN:-}"
+      # ---- llama-server ----
+      TENSOR_SPLIT: "${TENSOR_SPLIT:-1,1}"
+      CTX_SIZE: "${CTX_SIZE:-16384}"
+    volumes:
+      - model-cache:/models          # persists the 12 GB GGUF across restarts
+      - ./audit:/app/logs            # audit log on the host
+      - ./config.deploy.yaml:/app/config.deploy.yaml:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all             # both GPUs
+              capabilities: [gpu]
+
+volumes:
+  model-cache:

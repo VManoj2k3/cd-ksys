@@ -3,3 +3,8 @@ __pycache__/
 .env
 models/
 logs/
+
+# deployment secrets & artifacts
+config.deploy.local.yaml
+deploy/.env
+deploy/audit/

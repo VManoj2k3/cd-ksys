@@ -11,3 +11,5 @@ codespell>=2.3
 huggingface_hub>=0.24
 flawfinder>=2.0
 javalang>=0.13
+ldap3>=2.9
+itsdangerous>=2.1

@@ -60,6 +60,27 @@ async function refreshHealth() {
 refreshHealth();
 setInterval(refreshHealth, 15000);
 
+/* ---------------- auth: show user, wire logout, handle 401 ---------------- */
+async function refreshUser() {
+  try {
+    const me = await (await fetch("/api/me")).json();
+    if (me.auth_mode && me.auth_mode !== "none" && me.user) {
+      $("userbox").classList.remove("hidden");
+      $("username-label").textContent = me.user;
+    }
+  } catch { /* ignore */ }
+}
+refreshUser();
+const logoutBtn = document.getElementById("logout-btn");
+if (logoutBtn) logoutBtn.addEventListener("click", async () => {
+  await fetch("/api/logout", { method: "POST" });
+  window.location.href = "/login";
+});
+function handle401(r) {
+  if (r.status === 401) { window.location.href = "/login"; return true; }
+  return false;
+}
+
 /* ---------------- review flow ---------------- */
 reviewBtn.addEventListener("click", async () => {
   const code = codeEl.value;
@@ -80,6 +101,7 @@ reviewBtn.addEventListener("click", async () => {
         language: $("language").value,   // dropdown is authoritative
       }),
     });
+    if (handle401(r)) return;
     if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
     const { job_id } = await r.json();
     poll(job_id);

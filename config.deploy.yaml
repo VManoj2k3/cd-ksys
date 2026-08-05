@@ -1,0 +1,215 @@
+# Production config for on-prem Docker deployment.
+# Secrets (session_secret, LDAP service password) come from env, not here.
+# Edit the auth.ldap.* block for your directory before deploying.
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  max_file_size_kb: 512
+  job_ttl_seconds: 3600
+  diff_display_max_lines: 12
+auth:
+  mode: ldap
+  session_ttl_seconds: 28800
+  session_secret: ''
+  cookie_secure: true
+  shared_token: ''
+  ldap:
+    server_uri: ldaps://ldap.company.internal:636
+    use_tls: true
+    tls_verify: true
+    timeout_seconds: 8
+    bind_dn_template: ''
+    base_dn: dc=company,dc=internal
+    user_attribute: sAMAccountName
+    search_bind_dn: ''
+    search_bind_password: ''
+audit:
+  enabled: true
+  log_path: ''
+languages:
+  enabled:
+  - python
+  - c
+  - cpp
+  - java
+  - typescript
+c:
+  std: c11
+  cppcheck:
+    enabled: true
+    enable: warning,portability
+  clang_tidy:
+    enabled: true
+    checks:
+    - bugprone-*
+    - cert-*
+    - -cert-err34-c
+    - -bugprone-easily-swappable-parameters
+  flawfinder:
+    enabled: true
+    min_level: 2
+  ruleset: autosar
+  llm_categories:
+  - memory_safety
+  - undefined_behavior
+  - resource_leak
+  - concurrency
+  - security
+  - api_misuse
+  - error_handling
+  - logic_bug
+  - autosar
+cpp:
+  std: c++14
+  cppcheck:
+    enabled: true
+    enable: warning,portability
+  clang_tidy:
+    enabled: true
+    checks:
+    - bugprone-*
+    - cert-*
+    - cppcoreguidelines-*
+    - -cppcoreguidelines-avoid-magic-numbers
+    - -cppcoreguidelines-pro-type-vararg
+    - -cppcoreguidelines-pro-bounds-array-to-pointer-decay
+    - -cppcoreguidelines-init-variables
+    - -cppcoreguidelines-avoid-non-const-global-variables
+    - -bugprone-easily-swappable-parameters
+  flawfinder:
+    enabled: true
+    min_level: 2
+  ruleset: autosar
+  llm_categories:
+  - memory_safety
+  - undefined_behavior
+  - resource_leak
+  - concurrency
+  - security
+  - api_misuse
+  - error_handling
+  - logic_bug
+  - autosar
+java:
+  pmd:
+    enabled: true
+    path: ''
+    version: 7.7.0
+    ruleset: rulesets/java/quickstart.xml
+  llm_categories:
+  - logic_bug
+  - security
+  - api_misuse
+  - resource_leak
+  - concurrency
+  - error_handling
+typescript:
+  llm_categories:
+  - logic_bug
+  - security
+  - api_misuse
+  - resource_leak
+  - concurrency
+  - error_handling
+spell:
+  enabled: true
+  min_word_length: 4
+  autofix_single_suggestion_only: true
+  check_identifiers: true
+  check_comments: true
+  check_strings: true
+  dynamic_vocabulary: true
+  vocab_min_identifiers: 3
+  allowlist: []
+lint:
+  ruff:
+    enabled: true
+    select:
+    - E4
+    - E7
+    - E9
+    - F
+    - B
+    - N
+    - PLE
+    ignore: []
+  bandit:
+    enabled: true
+    min_severity: LOW
+    min_confidence: MEDIUM
+hardcode:
+  enabled: false
+  magic_numbers:
+    enabled: true
+    allowed:
+    - 0
+    - 1
+    - -1
+    - 2
+    skip_constant_assignments: true
+    skip_default_args: true
+  strings:
+    flag_urls: true
+    flag_absolute_paths: true
+    flag_ip_addresses: true
+  secrets:
+    enabled: true
+llm:
+  base_url: http://127.0.0.1:8080/v1
+  api_key: none
+  model: qwen2.5-coder-14b-instruct
+  mock: false
+  temperature: 0.0
+  max_tokens_review: 2048
+  max_tokens_verify: 512
+  max_tokens_fix: 1024
+  timeout_seconds: 300
+  max_parallel_requests: 2
+  chunk_lines: 220
+  anchor_search_radius: 2
+  verify:
+    enabled: true
+  fix:
+    max_retries: 2
+review:
+  llm_categories:
+  - logic_bug
+  - security
+  - api_misuse
+  - resource_leak
+  - concurrency
+  - error_handling
+  context_lines_for_verify: 12
+  context_lines_for_fix: 15
+paths:
+  prompts_dir: prompts
+  frontend_dir: frontend
+  tools_dir: ''
+kaggle:
+  model_repo: bartowski/Qwen2.5-Coder-14B-Instruct-GGUF
+  model_file: Qwen2.5-Coder-14B-Instruct-Q6_K.gguf
+  model_dir: /kaggle/working/models
+  llama_server:
+    host: 127.0.0.1
+    port: 8080
+    ctx_size: 16384
+    n_gpu_layers: 999
+    split_mode: layer
+    tensor_split: 1,1
+    parallel_slots: 2
+    flash_attn: false
+  llama_cpp_release: latest
+  nvcc_search_paths:
+  - /usr/local/cuda*/bin/nvcc
+  - /opt/cuda*/bin/nvcc
+  - /opt/conda/bin/nvcc
+  - /opt/conda/pkgs/cuda-nvcc*/bin/nvcc
+  llama_cpp_pip_indexes:
+  - https://abetlen.github.io/llama-cpp-python/whl/cu125
+  - https://abetlen.github.io/llama-cpp-python/whl/cu124
+  - https://abetlen.github.io/llama-cpp-python/whl/cu122
+  - https://abetlen.github.io/llama-cpp-python/whl/cu121
+  tunnel:
+    provider: cloudflared
+    local_port: 8000

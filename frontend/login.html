@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cd koosys — Sign in</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+<div class="login-card">
+  <div class="brand" style="justify-content:center;margin-bottom:6px">
+    <span class="logo">⌘</span>
+    <h1>Cd koosys <span class="sub">code review</span></h1>
+  </div>
+  <p class="dim" style="text-align:center;margin-bottom:16px">Sign in with your company account</p>
+  <form id="login-form">
+    <input id="username" type="text" placeholder="Username" autocomplete="username" autofocus>
+    <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+    <button type="submit" class="btn btn-primary" style="width:100%;margin:0">Sign in</button>
+    <div id="err" class="login-err"></div>
+  </form>
+</div>
+<script>
+const f = document.getElementById("login-form");
+f.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = document.getElementById("err");
+  err.textContent = "";
+  const btn = f.querySelector("button");
+  btn.disabled = true; btn.textContent = "Signing in…";
+  try {
+    const r = await fetch("/api/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value,
+      }),
+    });
+    if (r.ok) { window.location.href = "/"; return; }
+    const j = await r.json().catch(() => ({}));
+    err.textContent = j.detail || "Invalid credentials";
+  } catch { err.textContent = "Sign-in failed — is the server reachable?"; }
+  btn.disabled = false; btn.textContent = "Sign in";
+});
+</script>
+</body>
+</html>

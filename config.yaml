@@ -4,11 +4,41 @@
 # ============================================================
 
 server:
+  # For internal deployment bind to the internal interface, not 0.0.0.0,
+  # unless a reverse proxy / firewall fronts it.
   host: "0.0.0.0"
   port: 8000
   max_file_size_kb: 512
   job_ttl_seconds: 3600
   diff_display_max_lines: 12
+
+# ---------------- Authentication (internal deployment) ----------------
+auth:
+  # "ldap" (company LDAP/AD) | "token" (shared secret) | "none" (dev only)
+  mode: "none"
+  session_ttl_seconds: 28800          # 8 hours
+  # REQUIRED for ldap/token: a long random secret to sign session cookies.
+  # Set via env KOOSYS_SESSION_SECRET instead of committing it here.
+  session_secret: ""
+  cookie_secure: false                # true when served over HTTPS
+  shared_token: ""                    # used when mode=token (prefer env KOOSYS_SHARED_TOKEN)
+  ldap:
+    server_uri: "ldaps://ldap.company.internal:636"
+    use_tls: true
+    tls_verify: true
+    timeout_seconds: 8
+    # Option A — direct bind (Active Directory): {username} is substituted.
+    #   bind_dn_template: "{username}@company.internal"
+    # Option B — search-then-bind (OpenLDAP): leave template empty and set these.
+    bind_dn_template: ""
+    base_dn: "dc=company,dc=internal"
+    user_attribute: "sAMAccountName"  # or "uid" for OpenLDAP
+    search_bind_dn: ""                # service account DN (read-only)
+    search_bind_password: ""          # prefer env; leave empty to bind anonymously
+
+audit:
+  enabled: true
+  log_path: ""                        # empty = <project>/logs/audit.log
 
 languages:
   enabled: ["python", "c", "cpp", "java", "typescript"]

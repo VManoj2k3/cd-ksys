@@ -139,6 +139,22 @@ main { flex: 1; display: flex; min-height: 0; }
 .diff .ctx { color: var(--dim); padding: 2px 8px; white-space: pre-wrap; }
 .nofix { font-size: 12px; color: var(--orange); margin-top: 6px; }
 .hidden { display: none; }
+
+/* login page */
+.login-body { display: flex; align-items: center; justify-content: center; height: 100vh; }
+.login-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 32px 28px; width: 340px;
+}
+.login-card input {
+  display: block; width: 100%; margin-bottom: 12px; padding: 10px 12px;
+  background: var(--bg3); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; font-size: 14px;
+}
+.login-card input:focus { outline: none; border-color: var(--accent); }
+.login-err { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 16px; text-align: center; }
+#userbox { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--dim); }
+#logout-btn { padding: 3px 10px; font-size: 12px; }
 .banner {
   background: rgba(210,153,34,.1); border: 1px solid var(--orange); color: var(--orange);
   border-radius: 6px; padding: 8px 12px; font-size: 13px;
