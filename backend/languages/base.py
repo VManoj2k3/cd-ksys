@@ -46,6 +46,12 @@ class LanguagePlugin:
         """Extra ruleset text injected into the review prompt (e.g. AUTOSAR)."""
         return ""
 
+    def enclosing_functions(self, code: str) -> list[tuple[str, int, int]]:
+        """Return [(name, start_line, end_line)] for functions/methods, so
+        the UI can group findings by function. Default: brace-based scan for
+        the C family (C/C++/Java/TS). Python overrides with AST."""
+        return c_family_functions(code)
+
     def tmp_name(self, filename: str) -> str:
         """Temp filename guaranteed to carry a valid extension for this
         language's tools — routing may pick a plugin whose extension the
@@ -56,6 +62,85 @@ class LanguagePlugin:
         if p.suffix.lower() in self.extensions and p.name:
             return p.name
         return f"snippet{self.extensions[0]}"
+
+
+_FUNC_KEYWORDS = frozenset({
+    "if", "for", "while", "switch", "catch", "do", "else", "return", "sizeof",
+    "typedef", "struct", "enum", "union", "class", "namespace", "case",
+    "default", "new", "delete", "throw", "template",
+})
+
+
+def c_family_functions(code: str) -> list[tuple[str, int, int]]:
+    """Brace-based function/method finder for C-family languages. Matches
+    `name(params) {` (name not a control keyword) at any nesting depth, then
+    brace-matches to the end. Robust on real code; never raises."""
+    import bisect
+    import re as _re
+
+    n = len(code)
+    line_starts = [0]
+    for idx, ch in enumerate(code):
+        if ch == "\n":
+            line_starts.append(idx + 1)
+
+    def line_of(pos: int) -> int:
+        return bisect.bisect_right(line_starts, pos)
+
+    funcs: list[tuple[str, int, int]] = []
+    for m in _re.finditer(r"([A-Za-z_]\w*)\s*\(", code):
+        name = m.group(1)
+        if name in _FUNC_KEYWORDS:
+            continue
+        # match the parameter parens
+        p = m.end() - 1
+        d = 0
+        j = p
+        while j < n:
+            if code[j] == "(":
+                d += 1
+            elif code[j] == ")":
+                d -= 1
+                if d == 0:
+                    break
+            j += 1
+        if j >= n:
+            continue
+        # after ')' expect '{' before ';' (a definition, not a declaration/call)
+        seg = code[j + 1: j + 160]
+        brace = seg.find("{")
+        semi = seg.find(";")
+        if brace == -1 or (semi != -1 and semi < brace):
+            continue
+        open_brace = j + 1 + brace
+        d = 0
+        r = open_brace
+        while r < n:
+            if code[r] == "{":
+                d += 1
+            elif code[r] == "}":
+                d -= 1
+                if d == 0:
+                    break
+            r += 1
+        if r >= n:
+            continue
+        funcs.append((name, line_of(m.start()), line_of(r)))
+    return funcs
+
+
+def assign_functions(violations, functions) -> None:
+    """Set each violation's `.function` to the smallest enclosing function."""
+    for v in violations:
+        best = None
+        best_span = None
+        for name, s, e in functions:
+            if s <= v.line <= e:
+                span = e - s
+                if best_span is None or span < best_span:
+                    best, best_span = name, span
+        if best:
+            v.function = best
 
 
 _REGISTRY: list[LanguagePlugin] = []

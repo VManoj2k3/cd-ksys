@@ -142,22 +142,75 @@ function renderResults(job) {
       .map((s) => `<span>${s}: <b>${bySev[s]}</b></span>`).join("") +
     (job.stats && job.stats.llm_raw_findings !== undefined
       ? `<span class="dim">LLM precision filter: ${job.stats.llm_raw_findings} raw → ${vs.filter((v) => v.layer === "llm").length} confirmed</span>`
-      : "");
+      : "") +
+    (vs.length ? `<button id="copy-btn" class="btn btn-copy">Copy all</button>` : "");
 
   if (!vs.length) {
     resultsEl.innerHTML = `<div class="empty-state"><p>No violations found.</p>${
       job.llm_available ? "" : '<p class="dim">Note: LLM layer was offline — only deterministic checks ran.</p>'}</div>`;
     return;
   }
+
+  // group violations by their enclosing function (fall back to file scope)
+  const groups = new Map();
+  vs.forEach((v) => {
+    const key = v.function || "(file scope)";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(v);
+  });
+  // order groups by the first violation's line
+  const ordered = [...groups.entries()].sort(
+    (a, b) => a[1][0].line - b[1][0].line);
+
   resultsEl.innerHTML = (job.llm_available ? "" :
     '<div class="banner">llama-server offline — showing deterministic findings only; no LLM fixes generated.</div>') +
-    vs.map(cardHTML).join("");
+    ordered.map(([fn, items]) => {
+      const label = fn === "(file scope)" ? "(file scope)" : `${esc(fn)}()`;
+      return `<div class="fn-group">
+        <div class="fn-header">${label} <span class="dim">${items.length} finding${items.length === 1 ? "" : "s"}</span></div>
+        ${items.map(cardHTML).join("")}
+      </div>`;
+    }).join("");
 
   // wire up events
   resultsEl.querySelectorAll("[data-line]").forEach((el) =>
     el.addEventListener("click", () => jumpToLine(parseInt(el.dataset.line, 10))));
   resultsEl.querySelectorAll("[data-apply]").forEach((el) =>
     el.addEventListener("click", () => applyFix(job, el.dataset.apply)));
+  const copyBtn = document.getElementById("copy-btn");
+  if (copyBtn) copyBtn.addEventListener("click", () => copyViolations(job, copyBtn));
+}
+
+function copyViolations(job, btn) {
+  const vs = job.violations;
+  const groups = new Map();
+  vs.forEach((v) => {
+    const key = v.function || "(file scope)";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(v);
+  });
+  const ordered = [...groups.entries()].sort((a, b) => a[1][0].line - b[1][0].line);
+  const lines = [`Code review — ${job.filename || ""} (${job.language || ""})`,
+                 `${vs.length} violation(s)`, ""];
+  ordered.forEach(([fn, items]) => {
+    lines.push(fn === "(file scope)" ? "## (file scope)" : `## ${fn}()`);
+    items.forEach((v) => {
+      lines.push(`  L${v.line} [${v.layer}/${v.rule}] ${v.severity}: ${v.message}`);
+      if (v.fix && v.fix.validated) {
+        const at = v.fix.start_line && v.fix.start_line !== v.line
+          ? ` (line ${v.fix.start_line})` : "";
+        lines.push(`      fix${at}: ${v.fix.replacement.replace(/\n/g, " ")}`);
+      } else if (v.suggestion || v.message) {
+        lines.push(`      manual: ${v.suggestion || v.message}`);
+      }
+    });
+    lines.push("");
+  });
+  const text = lines.join("\n");
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = "Copied ✓";
+    setTimeout(() => { btn.textContent = "Copy all"; }, 2000);
+  }).catch(() => { btn.textContent = "Copy failed"; });
 }
 
 function cardHTML(v) {

@@ -86,6 +86,15 @@ main { flex: 1; display: flex; min-height: 0; }
 
 .summary { display: flex; gap: 14px; font-size: 13px; color: var(--dim); flex-wrap: wrap; }
 .summary b { color: var(--text); }
+.btn-copy { margin-left: auto; padding: 3px 12px; font-size: 12px; color: var(--accent); border-color: var(--accent); background: transparent; }
+.btn-copy:hover { background: rgba(79,142,247,.12); }
+
+.fn-group { margin-bottom: 14px; }
+.fn-header {
+  font-family: var(--mono); font-size: 13px; color: var(--text);
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 12px; margin-bottom: 8px; position: sticky; top: 0; z-index: 1;
+}
 
 .results { display: flex; flex-direction: column; gap: 10px; }
 .empty-state { color: var(--dim); padding: 40px 20px; text-align: center; }

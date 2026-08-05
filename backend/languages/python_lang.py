@@ -55,6 +55,18 @@ class PythonPlugin(LanguagePlugin):
         except SyntaxError as exc:
             return False, f"syntax error: {exc}"
 
+    def enclosing_functions(self, code: str) -> list[tuple[str, int, int]]:
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            return []
+        out: list[tuple[str, int, int]] = []
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                out.append((node.name, node.lineno,
+                            getattr(node, "end_lineno", node.lineno)))
+        return out
+
     def llm_categories(self) -> list[str]:
         return CFG.get("review.llm_categories_python",
                        CFG.get("review.llm_categories", []))

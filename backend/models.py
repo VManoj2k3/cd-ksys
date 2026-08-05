@@ -44,6 +44,7 @@ class Violation(BaseModel):
     snippet: str = ""
     message: str
     suggestion: str = ""
+    function: str = ""   # enclosing function/method name, for UI grouping
     fix: Optional[Fix] = None
     # provenance for trust: deterministic layers are marked verified by construction
     verified: bool = True

@@ -5,7 +5,7 @@ import asyncio
 
 from backend.app_config import CFG
 from backend.fixes.fix_engine import fill_missing_fixes
-from backend.languages.base import plugin_by_language, plugin_for
+from backend.languages.base import assign_functions, plugin_by_language, plugin_for
 from backend.layers.hardcode import run_hardcode_layer
 from backend.layers.llm_review import run_llm_review
 from backend.layers.spell import run_spell_layer
@@ -168,6 +168,12 @@ async def run_review(job: ReviewJob) -> None:
             llm_st.detail = str(exc)
 
     violations = sorted([*deterministic, *llm_v], key=lambda v: (v.line, v.layer.value))
+
+    # tag each violation with its enclosing function so the UI can group them
+    try:
+        assign_functions(violations, plugin.enclosing_functions(code))
+    except Exception:  # noqa: BLE001 — grouping is cosmetic, never fail the job
+        pass
 
     # ---- fixes for anything still missing one ----
     fx = _layer(job, "fixes")
