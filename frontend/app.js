@@ -172,10 +172,17 @@ function cardHTML(v) {
         return `<div class="${cls}">${esc(ln)}</div>`;
       }).join("");
     } else {
-      diffRows = `<div class="del">- ${esc(v.snippet)}</div><div class="add">+ ${esc(fix.replacement)}</div>`;
+      // show the ACTUAL line(s) the fix changes, which may differ from the
+      // violation's line (e.g. an uninitialized-var fix targets the
+      // declaration, not the use-site). Pull the real "before" from the editor.
+      const codeLines = codeEl.value.split("\n");
+      const before = codeLines.slice(fix.start_line - 1, fix.end_line).join("\n");
+      diffRows = `<div class="del">- ${esc(before || v.snippet)}</div><div class="add">+ ${esc(fix.replacement)}</div>`;
     }
+    const atNote = (!fix.file_wide && fix.start_line && fix.start_line !== v.line)
+      ? ` <span class="dim">— fix targets line ${fix.start_line}</span>` : "";
     fixHTML = `<div class="fixbox">
-      <div class="fix-title">Validated fix <span class="dim">— ${esc(fix.validation_notes)}</span>
+      <div class="fix-title">Validated fix <span class="dim">— ${esc(fix.validation_notes)}</span>${atNote}
         <button class="btn btn-apply" data-apply="${v.id}">Apply</button></div>
       <div class="diff">${diffRows}</div>
     </div>`;
