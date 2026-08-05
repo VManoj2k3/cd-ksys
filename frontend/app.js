@@ -91,6 +91,8 @@ reviewBtn.addEventListener("click", async () => {
   summaryEl.classList.add("hidden");
   layersEl.classList.remove("hidden");
   layersEl.innerHTML = "";
+  pollFailures = 0;
+  renderedProgressive = false;
   try {
     const r = await fetch("/api/review", {
       method: "POST",
@@ -117,21 +119,42 @@ function endReview() {
   if (pollTimer) clearTimeout(pollTimer);
 }
 
+let pollFailures = 0;
+const MAX_POLL_FAILURES = 15;   // tolerate transient tunnel blips on long reviews
+let renderedProgressive = false;
+
 function poll(jobId) {
   pollTimer = setTimeout(async () => {
     try {
       const r = await fetch(`/api/job/${jobId}`);
-      if (!r.ok) throw new Error("job lost");
+      if (r.status === 404) throw new Error("job expired");
+      if (!r.ok) { pollFailures++; if (pollFailures <= MAX_POLL_FAILURES) return poll(jobId); throw new Error("server not responding"); }
       const job = await r.json();
+      pollFailures = 0;                 // reset on any good poll
       renderLayers(job.layers);
+      // progressive: show findings as soon as they're attached (fixes may
+      // still be generating) so a long fix stage doesn't hide the results
+      if (!renderedProgressive && job.violations && job.violations.length) {
+        renderedProgressive = true;
+        renderResults(job);
+      }
       if (job.state === "done") { endReview(); renderResults(job); }
       else if (job.state === "error") {
         endReview();
-        resultsEl.innerHTML = `<div class="banner">Review failed: ${esc(job.error)}</div>`;
+        // if we already showed findings, keep them and just note the error
+        if (renderedProgressive) {
+          const b = document.createElement("div");
+          b.className = "banner"; b.textContent = "Note: " + job.error;
+          resultsEl.prepend(b);
+        } else {
+          resultsEl.innerHTML = `<div class="banner">Review failed: ${esc(job.error)}</div>`;
+        }
       } else poll(jobId);
     } catch (err) {
+      pollFailures++;
+      if (pollFailures <= MAX_POLL_FAILURES) return poll(jobId);   // keep trying
       endReview();
-      resultsEl.innerHTML = `<div class="banner">${esc(String(err.message || err))}</div>`;
+      resultsEl.innerHTML = `<div class="banner">Lost connection to the server after several retries: ${esc(String(err.message || err))}. The review may still be running — try refreshing.</div>`;
     }
   }, POLL_MS);
 }
