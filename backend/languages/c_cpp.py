@@ -69,11 +69,15 @@ class _CFamilyPlugin(LanguagePlugin):
         with tempfile.TemporaryDirectory() as td:
             f = Path(td) / self.tmp_name(filename)
             f.write_text(code, encoding="utf-8")
-            proc = subprocess.run(
-                ["cppcheck", f"--enable={enable}",
-                 "--inline-suppr", "--xml", "--xml-version=2", str(f)],
-                capture_output=True, text=True,
-            )
+            try:
+                proc = subprocess.run(
+                    ["cppcheck", f"--enable={enable}",
+                     "--inline-suppr", "--xml", "--xml-version=2", str(f)],
+                    capture_output=True, text=True,
+                    timeout=int(CFG.get("tools.timeout_seconds", 90)),
+                )
+            except subprocess.TimeoutExpired:
+                return []
         violations: list[Violation] = []
         try:
             root = ET.fromstring(proc.stderr or "<results/>")
@@ -147,8 +151,12 @@ class _CFamilyPlugin(LanguagePlugin):
         with tempfile.TemporaryDirectory() as td:
             f = Path(td) / self.tmp_name(filename)
             f.write_text(code, encoding="utf-8")
-            proc = subprocess.run(
-                ["flawfinder", "--csv", str(f)], capture_output=True, text=True)
+            try:
+                proc = subprocess.run(
+                    ["flawfinder", "--csv", str(f)], capture_output=True, text=True,
+                    timeout=int(CFG.get("tools.timeout_seconds", 90)))
+            except subprocess.TimeoutExpired:
+                return []
         violations: list[Violation] = []
         for i, row in enumerate(csv.DictReader(io.StringIO(proc.stdout or "")), 1):
             try:

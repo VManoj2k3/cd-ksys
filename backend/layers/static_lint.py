@@ -18,6 +18,10 @@ from backend.models import Fix, Layer, Severity, Violation
 _SEVERITY_ORDER = ["LOW", "MEDIUM", "HIGH"]
 
 
+def _tool_timeout() -> int:
+    return int(CFG.get("tools.timeout_seconds", 90))
+
+
 def _ruff_severity(code: str) -> Severity:
     if code.startswith("E9") or code in ("F821", "F811", "F823"):
         return Severity.HIGH
@@ -69,7 +73,11 @@ def run_ruff(code: str, filename: str) -> list[Violation]:
         if ignore:
             cmd += ["--ignore", ",".join(ignore)]
         cmd.append(str(f))
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=_tool_timeout())
+        except subprocess.TimeoutExpired:
+            return []
         try:
             results = json.loads(proc.stdout or "[]")
         except json.JSONDecodeError:
@@ -118,9 +126,13 @@ def run_bandit(code: str, filename: str) -> list[Violation]:
     with tempfile.TemporaryDirectory() as td:
         f = Path(td) / (filename or "snippet.py")
         f.write_text(code, encoding="utf-8")
-        proc = subprocess.run(
-            ["bandit", "-f", "json", "-q", str(f)], capture_output=True, text=True
-        )
+        try:
+            proc = subprocess.run(
+                ["bandit", "-f", "json", "-q", str(f)],
+                capture_output=True, text=True, timeout=_tool_timeout(),
+            )
+        except subprocess.TimeoutExpired:
+            return []
         try:
             payload = json.loads(proc.stdout or "{}")
         except json.JSONDecodeError:

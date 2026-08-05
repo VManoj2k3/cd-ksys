@@ -40,6 +40,16 @@ audit:
   enabled: true
   log_path: ""                        # empty = <project>/logs/audit.log
 
+# External analysis tools (cppcheck/clang-tidy/flawfinder/ruff/bandit/pmd/eslint):
+# hard wall-clock cap per invocation so a pathological file can never hang a
+# review worker. On timeout that layer yields nothing and the review continues.
+tools:
+  timeout_seconds: 90
+
+# Overall per-review cap. Exceeding it marks the job "error" (timed out) and
+# frees the worker — protects a multi-user service from a stuck review.
+review_max_seconds: 600
+
 languages:
   enabled: ["python", "c", "cpp", "java", "typescript"]
 

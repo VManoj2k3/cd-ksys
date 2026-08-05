@@ -101,11 +101,17 @@ def _start_job(code: str, filename: str, language: str, user: str) -> ReviewJob:
     audit.record("review", user, time.time(), job_id=job.job_id,
                  filename=filename, language=language, size_bytes=len(code.encode()))
 
+    max_s = int(CFG.get("review_max_seconds", 600))
+
     async def _run():
         try:
-            await run_review(job)
+            await asyncio.wait_for(run_review(job), timeout=max_s)
             audit.record("review_done", user, time.time(), job_id=job.job_id,
                          violations=len(job.violations), state=job.state)
+        except asyncio.TimeoutError:
+            job.state = "error"
+            job.error = f"Review exceeded {max_s}s and was cancelled"
+            audit.record("review_timeout", user, time.time(), job_id=job.job_id)
         except Exception as exc:  # noqa: BLE001 — surface, never crash server
             job.state = "error"
             job.error = str(exc)
