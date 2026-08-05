@@ -32,6 +32,12 @@ class LanguagePlugin:
     def security(self, code: str, filename: str) -> list[Violation]:
         return []
 
+    def hardcode(self, code: str, filename: str) -> list[Violation]:
+        """Deterministic hardcoded-value scanner (magic numbers, secrets,
+        URLs...). Each plugin self-gates via config and returns [] when off.
+        Default: no hardcode scanning for this language."""
+        return []
+
     def spell_tokens(self, code: str) -> list[SpellToken]:
         return []
 

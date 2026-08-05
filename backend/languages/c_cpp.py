@@ -179,6 +179,14 @@ class _CFamilyPlugin(LanguagePlugin):
             ))
         return violations
 
+    # ---------------- hardcode: deterministic magic-number scan ----------------
+    def hardcode(self, code: str, filename: str) -> list[Violation]:
+        # Deterministic replacement for the LLM's unreliable "magic literal"
+        # detection: only RAW numeric literals in executable code are flagged;
+        # named constants, #define bodies, comments and strings are skipped.
+        from backend.languages.cnumbers import scan_magic_numbers
+        return scan_magic_numbers(code, self.name)
+
     # ---------------- shared bits ----------------
     def spell_tokens(self, code: str) -> list[SpellToken]:
         return c_family_tokens(code)
@@ -206,7 +214,15 @@ class _CFamilyPlugin(LanguagePlugin):
     def llm_extra_rules(self) -> str:
         if CFG.get(f"{self.name}.ruleset", "") != "autosar":
             return ""
-        path = PROJECT_ROOT / CFG.get("paths.prompts_dir", "prompts") / "autosar_subset.txt"
+        # C and C++ get DIFFERENT rulesets — C files must not be told to use
+        # static_cast/RAII/smart pointers (C++-only). Filename is config-driven,
+        # defaulting to autosar_<name>.txt (autosar_c.txt / autosar_cpp.txt).
+        default_file = f"autosar_{self.name}.txt"
+        fname = CFG.get(f"{self.name}.ruleset_file", default_file)
+        pdir = PROJECT_ROOT / CFG.get("paths.prompts_dir", "prompts")
+        path = pdir / fname
+        if not path.exists():  # fall back to the legacy combined file
+            path = pdir / "autosar_subset.txt"
         return path.read_text(encoding="utf-8") if path.exists() else ""
 
 

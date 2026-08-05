@@ -79,12 +79,10 @@ def _fix_deletes_logic(original_lines: list[str], replacement: str) -> bool:
 
 def _still_present(v: Violation, patched: str, filename: str, plugin) -> bool:
     """Re-run the violation's own detector on the patched code."""
-    from backend.layers.hardcode import run_hardcode_layer
-
     if v.layer == Layer.SECURITY:
         found = plugin.security(patched, filename)
     elif v.layer == Layer.HARDCODE:
-        found = run_hardcode_layer(patched)
+        found = plugin.hardcode(patched, filename)
     elif v.layer == Layer.LINT:
         found = plugin.lint(patched, filename)
     else:

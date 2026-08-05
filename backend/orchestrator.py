@@ -6,7 +6,6 @@ import asyncio
 from backend.app_config import CFG
 from backend.fixes.fix_engine import fill_missing_fixes
 from backend.languages.base import assign_functions, plugin_by_language, plugin_for
-from backend.layers.hardcode import run_hardcode_layer
 from backend.layers.llm_review import run_llm_review
 from backend.layers.spell import run_spell_layer
 from backend.llm.client import CLIENT
@@ -81,13 +80,25 @@ def _merge_same_line_llm(violations: list[Violation]) -> list[Violation]:
 def _dedup_same_finding(violations: list[Violation]) -> list[Violation]:
     """Collapse identical findings reported at multiple use-sites — e.g.
     cppcheck reports 'Uninitialized variable: total' at every use. Keep the
-    earliest line for each (layer, rule, message)."""
+    earliest line for each (rule, message).
+
+    Only LINT-layer findings are collapsed across lines: cppcheck/clang-tidy
+    are the tools that report one logical defect at every use-site. Spell,
+    security and hardcode each report DISTINCT per-line instances (six raw
+    `3` literals on six lines are six separate findings, not one), so they
+    pass through untouched — collapsing them would silently drop real hits."""
+    from backend.models import Layer
+
     seen: dict[tuple, Violation] = {}
+    passthrough: list[Violation] = []
     for v in sorted(violations, key=lambda x: x.line):
-        key = (v.layer, v.rule, v.message)
+        if v.layer != Layer.LINT:
+            passthrough.append(v)
+            continue
+        key = (v.rule, v.message)
         if key not in seen:
             seen[key] = v
-    return list(seen.values())
+    return passthrough + list(seen.values())
 
 
 _SPELLING_WORDS = ("misspell", "misspelled", "spelling", "spelled", "typo")
@@ -185,12 +196,16 @@ async def run_review(job: ReviewJob) -> None:
 
     async def do_hardcode():
         st = _layer(job, "hardcode")
-        if plugin.name != "python" or not CFG.get("hardcode.enabled", False):
-            st.state = "skipped"
-            st.detail = "disabled in config"
-            return []
         st.state = "running"
-        out = await run_sync(run_hardcode_layer, code)
+        try:
+            out = await run_sync(plugin.hardcode, code, filename)
+        except Exception as exc:  # noqa: BLE001 — never kill the job
+            st.state, st.detail = "error", str(exc)[:200]
+            return []
+        if not out and (plugin.name == "python"
+                        and not CFG.get("hardcode.enabled", False)):
+            st.state, st.detail = "skipped", "disabled in config"
+            return []
         st.found, st.state = len(out), "done"
         return out
 

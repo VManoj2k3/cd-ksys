@@ -33,6 +33,10 @@ class PythonPlugin(LanguagePlugin):
     def security(self, code: str, filename: str) -> list[Violation]:
         return run_bandit(code, filename)
 
+    def hardcode(self, code: str, filename: str) -> list[Violation]:
+        from backend.layers.hardcode import run_hardcode_layer
+        return run_hardcode_layer(code)
+
     def spell_tokens(self, code: str) -> list[SpellToken]:
         out: list[SpellToken] = []
         try:

@@ -141,6 +141,36 @@ async def run_llm_review(code: str, filename: str, stats: dict,
         anchored = [v for v in anchored if not _is_void_cast_noise(v)]
         stats["llm_rejected_void_cast"] = before - len(anchored)
 
+    # The LLM is unreliable at magic-number detection (it flags NAMED constants
+    # like TRUE / ERROR_PRESENT as "magic literals"). A deterministic scanner
+    # (hardcode layer) owns numeric literals now, so drop the LLM's versions.
+    if CFG.get("review.suppress_llm_magic_literal", True):
+        def _is_magic_literal_noise(v: Violation) -> bool:
+            m = v.message.lower()
+            return ("magic" in m and
+                    ("number" in m or "literal" in m or "constant" in m or
+                     "value" in m))
+        before = len(anchored)
+        anchored = [v for v in anchored if not _is_magic_literal_noise(v)]
+        stats["llm_rejected_magic_literal"] = before - len(anchored)
+
+    # C is NOT C++. Drop LLM findings that push C++-only constructs on a C file
+    # (e.g. "use static_cast", "use smart pointers / RAII") — those are wrong
+    # advice for C and read as false positives. Markers are config-driven.
+    if plugin.name == "c" and CFG.get("review.suppress_cpp_advice_on_c", True):
+        markers = [s.lower() for s in CFG.get("review.cpp_only_markers", [
+            "static_cast", "reinterpret_cast", "const_cast", "dynamic_cast",
+            "smart pointer", "unique_ptr", "shared_ptr", "std::", "raii",
+            "rule of five", "rule of three", "new/delete", "delete[]",
+            "template", "namespace", "constexpr", "nullptr instead",
+        ])]
+        def _is_cpp_advice(v: Violation) -> bool:
+            blob = (v.message + " " + (v.suggestion or "")).lower()
+            return any(mk in blob for mk in markers)
+        before = len(anchored)
+        anchored = [v for v in anchored if not _is_cpp_advice(v)]
+        stats["llm_rejected_cpp_advice_on_c"] = before - len(anchored)
+
     # bound the expensive verify+fix work on large/noisy files: keep the
     # highest-severity findings, note the rest. Prevents a 3000-line file from
     # sending hundreds of findings through per-item LLM verification.

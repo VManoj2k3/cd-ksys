@@ -64,6 +64,13 @@ c:
              "-bugprone-easily-swappable-parameters"]
   flawfinder: { enabled: true, min_level: 2 }
   ruleset: "autosar"    # injects AUTOSAR rule subset into LLM review
+  ruleset_file: "autosar_c.txt"   # C-specific rules (no C++ constructs)
+  # Deterministic magic-number scan (replaces the LLM's unreliable version).
+  # Flags RAW numeric literals in executable code; skips #define bodies,
+  # comments, strings, named constants, and the allow-list below.
+  magic_numbers:
+    enabled: true
+    allowed: [0, 1, 2, -1]
   llm_categories: ["memory_safety", "undefined_behavior", "resource_leak",
                    "concurrency", "security", "api_misuse", "error_handling",
                    "logic_bug", "autosar"]
@@ -82,6 +89,10 @@ cpp:
              "-bugprone-easily-swappable-parameters"]
   flawfinder: { enabled: true, min_level: 2 }
   ruleset: "autosar"
+  ruleset_file: "autosar_cpp.txt"   # C++14-specific rules
+  magic_numbers:
+    enabled: true
+    allowed: [0, 1, 2, -1]
   llm_categories: ["memory_safety", "undefined_behavior", "resource_leak",
                    "concurrency", "security", "api_misuse", "error_handling",
                    "logic_bug", "autosar"]
@@ -182,6 +193,16 @@ review:
   context_lines_for_fix: 15
   # drop LLM "ignored return value" findings on (void)-cast lines (AUTOSAR idiom)
   suppress_void_cast_ignored_return: true
+  # the LLM flags NAMED constants (TRUE, ERROR_PRESENT) as "magic literals" —
+  # unreliable. A deterministic scanner owns numeric literals; drop LLM's ones.
+  suppress_llm_magic_literal: true
+  # C is not C++: drop LLM findings that push C++-only constructs on a C file
+  suppress_cpp_advice_on_c: true
+  cpp_only_markers:
+    ["static_cast", "reinterpret_cast", "const_cast", "dynamic_cast",
+     "smart pointer", "unique_ptr", "shared_ptr", "std::", "raii",
+     "rule of five", "rule of three", "new/delete", "delete[]",
+     "template", "namespace", "constexpr", "nullptr instead"]
   # 0 = unlimited (report every finding, generate every fix — no caps)
   max_llm_findings: 0       # keep highest-severity N before verify (0 = all)
   max_fixes: 0              # cap LLM fix-generation calls (0 = all)

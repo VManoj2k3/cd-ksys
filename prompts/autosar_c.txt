@@ -1,0 +1,9 @@
+AUTOSAR/MISRA-C guided rule subset for the C language (report category "autosar" ONLY for clear violations of these). This is C, NOT C++ — do NOT suggest C++ constructs (static_cast, reinterpret_cast, RAII, smart pointers, std::, templates, references, new/delete). C-style casts are normal and correct in C; never flag them.
+- Every error/status return code must be checked; no silently ignored return values from functions that report errors. A `(void)` cast on the call is the accepted "intentionally ignored" idiom — do NOT flag it.
+- Uninitialized variables: every variable must be initialized before it is read.
+- No integer overflow / wraparound / unintended signedness or narrowing conversions that lose value range.
+- No use of a pointer that may be NULL without a prior null check; no use-after-free, double-free, or freeing memory not owned here.
+- Never return a pointer to (or otherwise leak the address of) a local/automatic variable — it dangles after return.
+- Buffer/array bounds: indexing or copying must stay within the declared size; prefer bounded string/memory operations.
+- `volatile` is not a synchronization mechanism; flag data races and missing synchronization on shared state.
+- Do NOT report "magic number / magic literal" findings — a separate deterministic scanner handles numeric literals. Do not comment on numeric constants at all.
