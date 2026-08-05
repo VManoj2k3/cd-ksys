@@ -51,6 +51,23 @@ def apply_patch(code: str, start_line: int, end_line: int, replacement: str) -> 
     return "\n".join(patched) + ("\n" if code.endswith("\n") else "")
 
 
+import re as _re
+
+_CONTROL_FLOW = ("return", "break", "continue", "goto", "throw", "yield")
+
+
+def _fix_deletes_logic(original_lines: list[str], replacement: str) -> bool:
+    """True if the replacement drops control flow that was in the replaced
+    span — e.g. turning `return total;` into `int total = 0;` clears the
+    warning but silently removes the return. Legitimate call replacements
+    (strcpy->strncpy) are NOT flagged."""
+    orig = "\n".join(original_lines)
+    for kw in _CONTROL_FLOW:
+        if _re.search(rf"\b{kw}\b", orig) and not _re.search(rf"\b{kw}\b", replacement):
+            return True
+    return False
+
+
 def _still_present(v: Violation, patched: str, filename: str, plugin) -> bool:
     """Re-run the violation's own detector on the patched code."""
     from backend.layers.hardcode import run_hardcode_layer
@@ -99,6 +116,11 @@ async def generate_fix(v: Violation, code: str, filename: str, plugin) -> Fix | 
             continue
         # patch must stay near the violation
         if not (start - ctx_n <= v.line <= end + ctx_n):
+            continue
+        # reject destructive fixes: a patch must not DELETE control-flow or a
+        # call that was in the replaced span (e.g. turning `return total;`
+        # into `int total = 0;` clears the warning but breaks the function)
+        if _fix_deletes_logic(lines[start - 1:end], replacement):
             continue
         patched = apply_patch(code, start, end, replacement)
         ok, syntax_note = plugin.validate_syntax(patched)

@@ -30,6 +30,18 @@ def _layer(job: ReviewJob, name: str) -> LayerStatus:
     return next(s for s in job.layers if s.name == name)
 
 
+def _dedup_same_finding(violations: list[Violation]) -> list[Violation]:
+    """Collapse identical findings reported at multiple use-sites — e.g.
+    cppcheck reports 'Uninitialized variable: total' at every use. Keep the
+    earliest line for each (layer, rule, message)."""
+    seen: dict[tuple, Violation] = {}
+    for v in sorted(violations, key=lambda x: x.line):
+        key = (v.layer, v.rule, v.message)
+        if key not in seen:
+            seen[key] = v
+    return list(seen.values())
+
+
 _SPELLING_WORDS = ("misspell", "misspelled", "spelling", "spelled", "typo")
 
 
@@ -130,7 +142,7 @@ async def run_review(job: ReviewJob) -> None:
     spell_v, lint_v, sec_v, hard_v = await asyncio.gather(
         do_spell(), do_lint(), do_security(), do_hardcode()
     )
-    deterministic = [*spell_v, *lint_v, *sec_v, *hard_v]
+    deterministic = _dedup_same_finding([*spell_v, *lint_v, *sec_v, *hard_v])
 
     # ---- LLM layers ----
     llm_st = _layer(job, "llm_review")

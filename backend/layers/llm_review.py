@@ -132,18 +132,19 @@ async def run_llm_review(code: str, filename: str, stats: dict,
             v.verification_note = "verify pass disabled"
         return anchored
 
-    verified = await asyncio.gather(*(_verify(v, lines) for v in anchored))
+    verified = await asyncio.gather(
+        *(_verify(v, lines, plugin.display) for v in anchored))
     kept = [v for v in verified if v is not None]
     stats["llm_rejected_by_verifier"] = len(anchored) - len(kept)
     return kept
 
 
-async def _verify(v: Violation, lines: list[str]) -> Violation | None:
+async def _verify(v: Violation, lines: list[str], language: str) -> Violation | None:
     ctx_n = int(CFG.get("review.context_lines_for_verify", 12))
     lo = max(0, v.line - 1 - ctx_n)
     hi = min(len(lines), v.line + ctx_n)
     prompt = _prompt("verify.txt").format(
-        line=v.line, snippet=v.snippet, category=v.rule,
+        language=language, line=v.line, snippet=v.snippet, category=v.rule,
         message=v.message, context=_numbered(lines[lo:hi], lo + 1),
     )
     res = await CLIENT.chat_json(
