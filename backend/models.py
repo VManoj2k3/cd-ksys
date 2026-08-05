@@ -49,6 +49,7 @@ class Violation(BaseModel):
     # provenance for trust: deterministic layers are marked verified by construction
     verified: bool = True
     verification_note: str = ""
+    no_autofix: bool = False   # fix engine must not generate a fix (e.g. would break build)
 
 
 class LayerStatus(BaseModel):

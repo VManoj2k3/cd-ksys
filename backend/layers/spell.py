@@ -178,6 +178,7 @@ def run_spell_layer(code: str, plugin: LanguagePlugin) -> list[Violation]:
                             f"'{sub}' -> {', '.join(suggestions)}",
                     suggestion=suggestion,
                     fix=fix,
+                    no_autofix=external,   # never let the fix engine rename it
                 ))
                 break  # one report per identifier
 

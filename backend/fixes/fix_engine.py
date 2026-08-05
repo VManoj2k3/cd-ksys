@@ -158,7 +158,9 @@ async def fill_missing_fixes(
     # Deterministic layers already carry their own fixes; this bounds the
     # LLM-generated fixes so large files complete in reasonable time.
     max_fixes = int(CFG.get("review.max_fixes", 0))
-    targets = [v for v in violations if v.fix is None]
+    # skip findings explicitly marked no-autofix (e.g. generated/external
+    # identifiers where any fix would break the build)
+    targets = [v for v in violations if v.fix is None and not v.no_autofix]
     if max_fixes > 0:
         targets = targets[:max_fixes]
     results = await asyncio.gather(
