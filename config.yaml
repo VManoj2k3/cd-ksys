@@ -49,7 +49,7 @@ tools:
 # Overall per-review cap. Exceeding it marks the job "error" (timed out) and
 # frees the worker — protects a multi-user service from a stuck review.
 # Large files (thousands of lines) legitimately need time on slower GPUs.
-review_max_seconds: 1200
+review_max_seconds: 1800   # 30 minutes
 
 languages:
   enabled: ["python", "c", "cpp", "java", "typescript"]
@@ -174,10 +174,10 @@ review:
   llm_categories: ["logic_bug", "security", "api_misuse", "resource_leak", "concurrency", "error_handling"]
   context_lines_for_verify: 12
   context_lines_for_fix: 15
-  # bound expensive per-finding LLM work so large files complete in time
-  max_llm_findings: 40      # keep highest-severity N before verify
-  max_fixes: 30             # cap LLM fix-generation calls per review
-  fix_budget_seconds: 300   # fix stage is best-effort; findings always shown
+  # 0 = unlimited (report every finding, generate every fix — no caps)
+  max_llm_findings: 0       # keep highest-severity N before verify (0 = all)
+  max_fixes: 0              # cap LLM fix-generation calls (0 = all)
+  fix_budget_seconds: 1740  # fix stage budget (just under the 30-min review cap)
 
 paths:
   prompts_dir: "prompts"

@@ -132,8 +132,8 @@ async def run_llm_review(code: str, filename: str, stats: dict,
     # sending hundreds of findings through per-item LLM verification.
     _sev_rank = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2,
                  Severity.LOW: 1, Severity.INFO: 0}
-    max_findings = int(CFG.get("review.max_llm_findings", 40))
-    if len(anchored) > max_findings:
+    max_findings = int(CFG.get("review.max_llm_findings", 0))
+    if max_findings > 0 and len(anchored) > max_findings:
         anchored.sort(key=lambda v: _sev_rank.get(v.severity, 0), reverse=True)
         stats["llm_capped"] = len(anchored) - max_findings
         anchored = anchored[:max_findings]
