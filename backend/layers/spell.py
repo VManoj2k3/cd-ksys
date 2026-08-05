@@ -60,6 +60,18 @@ def _match_case(original: str, replacement: str) -> str:
     return replacement
 
 
+def _is_external_identifier(ident: str) -> bool:
+    """True if the identifier is defined outside this file (generated / BSW
+    API), so a file-local rename would break the build. Prefix list is
+    config-driven (spell.external_prefixes)."""
+    prefixes = CFG.get("spell.external_prefixes", [
+        "Rte_", "Os_", "Dem_", "Det_", "Com_", "NvM_", "EcuM_", "BswM_",
+        "Can", "Lin", "Fr_", "Eth_", "Dcm_", "PduR_", "Std_", "VStdLib_",
+        "Mcu_", "Port_", "Dio_", "Adc_", "Pwm_", "Gpt_", "Spi_", "Wdg_",
+    ])
+    return any(ident.startswith(p) for p in prefixes)
+
+
 def _check_word(word: str, min_len: int, allow: set[str]) -> tuple[list[str], bool] | None:
     lw = word.lower()
     if len(lw) < min_len or lw in allow:
@@ -129,8 +141,13 @@ def run_spell_layer(code: str, plugin: LanguagePlugin) -> list[Violation]:
                 seen_identifiers.add(tok.text)
                 corrected_sub = _match_case(sub, suggestions[0])
                 corrected_ident = tok.text.replace(sub, corrected_sub)
+                # An identifier defined OUTSIDE this file (generated/BSW API like
+                # Rte_*, Dem_*, ...) must not be renamed here — the real name
+                # lives in a generated header, so a file-local rename breaks the
+                # build. Report the typo, but no rename fix.
+                external = _is_external_identifier(tok.text)
                 fix = None
-                if autofix_ok or not single_only:
+                if (autofix_ok or not single_only) and not external:
                     from backend.diffutil import display_diff
 
                     fixed_code = re.sub(
@@ -147,6 +164,11 @@ def run_spell_layer(code: str, plugin: LanguagePlugin) -> list[Violation]:
                         fixed_code=fixed_code if valid else None,
                         validated=valid, validation_notes=note,
                     )
+                suggestion = (
+                    f"Generated/external API name — fix the typo in the generator "
+                    f"config, not here (renaming would break the build)"
+                    if external else
+                    f"Rename to '{corrected_ident}' (all occurrences)")
                 violations.append(Violation(
                     id=next_id(), layer=Layer.SPELL, rule="spell-identifier",
                     severity=Severity.LOW, line=tok.line, col=tok.col,
@@ -154,7 +176,7 @@ def run_spell_layer(code: str, plugin: LanguagePlugin) -> list[Violation]:
                              if tok.line - 1 < len(lines) else tok.text),
                     message=f"Identifier '{tok.text}' contains misspelling "
                             f"'{sub}' -> {', '.join(suggestions)}",
-                    suggestion=f"Rename to '{corrected_ident}' (all occurrences)",
+                    suggestion=suggestion,
                     fix=fix,
                 ))
                 break  # one report per identifier

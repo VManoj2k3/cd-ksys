@@ -127,6 +127,20 @@ async def run_llm_review(code: str, filename: str, stats: dict,
     stats["llm_rejected_bad_anchor"] = rejected_anchor
     stats["llm_rejected_bad_category"] = rejected_category
 
+    # AUTOSAR/MISRA idiom: `(void)Rte_Read(...)` explicitly discards the return
+    # ON PURPOSE. Drop "ignored/unused return value" findings on such lines —
+    # the (void) cast is the accepted way to say "intentional".
+    if CFG.get("review.suppress_void_cast_ignored_return", True):
+        def _is_void_cast_noise(v: Violation) -> bool:
+            m = v.message.lower()
+            about_return = ("return value" in m or "return code" in m) and \
+                ("ignor" in m or "not used" in m or "not checked" in m or
+                 "unused" in m or "discard" in m)
+            return about_return and v.snippet.strip().startswith("(void)")
+        before = len(anchored)
+        anchored = [v for v in anchored if not _is_void_cast_noise(v)]
+        stats["llm_rejected_void_cast"] = before - len(anchored)
+
     # bound the expensive verify+fix work on large/noisy files: keep the
     # highest-severity findings, note the rest. Prevents a 3000-line file from
     # sending hundreds of findings through per-item LLM verification.

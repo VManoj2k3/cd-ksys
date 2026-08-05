@@ -118,6 +118,12 @@ spell:
   vocab_min_identifiers: 3
   # optional manual overrides (empty by default — the code teaches the rules)
   allowlist: []
+  # identifiers with these prefixes are generated/external API (AUTOSAR BSW):
+  # report typos but never offer a file-local rename (would break the build)
+  external_prefixes:
+    ["Rte_", "Os_", "Dem_", "Det_", "Com_", "NvM_", "EcuM_", "BswM_",
+     "Can", "Lin", "Fr_", "Eth_", "Dcm_", "PduR_", "Std_", "VStdLib_",
+     "Mcu_", "Port_", "Dio_", "Adc_", "Pwm_", "Gpt_", "Spi_", "Wdg_"]
 
 # ---------------- L1: Deterministic lint ----------------
 lint:
@@ -174,6 +180,8 @@ review:
   llm_categories: ["logic_bug", "security", "api_misuse", "resource_leak", "concurrency", "error_handling"]
   context_lines_for_verify: 12
   context_lines_for_fix: 15
+  # drop LLM "ignored return value" findings on (void)-cast lines (AUTOSAR idiom)
+  suppress_void_cast_ignored_return: true
   # 0 = unlimited (report every finding, generate every fix — no caps)
   max_llm_findings: 0       # keep highest-severity N before verify (0 = all)
   max_fixes: 0              # cap LLM fix-generation calls (0 = all)
