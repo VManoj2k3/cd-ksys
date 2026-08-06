@@ -10,6 +10,7 @@ export default [
     languageOptions: { globals: { console: "readonly", process: "readonly",
       require: "readonly", module: "readonly", window: "readonly",
       document: "readonly", setTimeout: "readonly", fetch: "readonly" } },
-    rules: { "@typescript-eslint/no-explicit-any": "off" },
+    rules: { "@typescript-eslint/no-explicit-any": "off",
+      "security/detect-object-injection": "off" },
   },
 ];

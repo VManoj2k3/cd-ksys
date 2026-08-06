@@ -63,3 +63,25 @@ files:
       - {name: null-deref-after-cast, line: 37, layer: llm}
 
   - {path: stress/cpp_clean.cpp, language: cpp, clean: true}
+
+  # ---------------- Java ----------------
+  # (no Java clean entry: PMD presence/ruleset varies per stack, so a "clean"
+  #  gate would be environment-dependent; this file measures LLM recall)
+  - path: eval/JavaSemanticBugs.java
+    language: java
+    expect:
+      - {name: divide-by-zero-empty-array, line: 10, layer: llm}
+      - {name: off-by-one-loop, line: 15, layer: llm}
+      - {name: reader-never-closed, line: 24, layer: llm}
+      - {name: index-empty-list, line: 33, layer: llm}
+
+  # ---------------- TypeScript ----------------
+  - path: eval/ts_semantic_bugs.ts
+    language: ts
+    expect:
+      - {name: nan-for-empty-input, line: 9, layer: llm}
+      - {name: off-by-one-loop, line: 14, layer: llm}
+      - {name: splice-while-iterating, line: 23, layer: llm}
+      - {name: index-empty-array, line: 30, layer: llm}
+
+  - {path: lang/clean.ts, language: ts, clean: true}

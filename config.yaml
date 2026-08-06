@@ -148,6 +148,10 @@ java:
 
 # ---------------- TypeScript / JavaScript ----------------
 typescript:
+  # eslint rules disabled for reviews (the flat config regenerates when this
+  # changes). detect-object-injection flags every arr[i] with a variable
+  # index — pure noise on ordinary code, drowns real security findings.
+  eslint_disable: ["security/detect-object-injection"]
   llm_categories: ["logic_bug", "security", "api_misuse", "resource_leak",
                    "concurrency", "error_handling"]
 

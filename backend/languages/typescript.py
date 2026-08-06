@@ -33,10 +33,20 @@ export default [
     languageOptions: { globals: { console: "readonly", process: "readonly",
       require: "readonly", module: "readonly", window: "readonly",
       document: "readonly", setTimeout: "readonly", fetch: "readonly" } },
-    rules: { "@typescript-eslint/no-explicit-any": "off" },
+    rules: { "@typescript-eslint/no-explicit-any": "off"__DISABLED_RULES__ },
   },
 ];
 """
+
+
+def _render_eslint_config() -> str:
+    """Flat config with config-driven rule disables. detect-object-injection
+    is off by default: it flags EVERY computed member access (`arr[i]` with a
+    variable index), which buries real findings in noise on ordinary code."""
+    disabled = CFG.get("typescript.eslint_disable",
+                       ["security/detect-object-injection"])
+    extra = "".join(f',\n      "{rule}": "off"' for rule in disabled)
+    return _ESLINT_CONFIG.replace("__DISABLED_RULES__", extra)
 
 
 def tools_dir() -> Path:
@@ -50,9 +60,10 @@ def ensure_eslint() -> Path | None:
     d = tools_dir()
     eslint_bin = d / "node_modules" / ".bin" / "eslint"
     cfg = d / "eslint.config.mjs"
-    if not cfg.exists():
+    rendered = _render_eslint_config()
+    if not cfg.exists() or cfg.read_text(encoding="utf-8") != rendered:
         d.mkdir(parents=True, exist_ok=True)
-        cfg.write_text(_ESLINT_CONFIG, encoding="utf-8")
+        cfg.write_text(rendered, encoding="utf-8")
         (d / "package.json").write_text('{"name":"koosys-tools","type":"module"}',
                                         encoding="utf-8")
     if not eslint_bin.exists():
