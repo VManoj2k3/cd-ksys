@@ -118,6 +118,44 @@ throughput. Queue time does **not** count against a review's time budget.
   `llm.max_parallel_requests` / `server.max_concurrent_reviews`, not extra
   uvicorn workers.
 
+## Internal rollout checklist (day 1)
+
+Software readiness is verified (CI + GPU acceptance runs — see HANDOFF.md
+for the measured numbers). These steps validate the pieces only YOUR
+environment can confirm, in order:
+
+1. **Secrets**: `cp deploy/.env.example deploy/.env`; set
+   `KOOSYS_SESSION_SECRET` (`openssl rand -hex 32`) and
+   `KOOSYS_METRICS_TOKEN` (`openssl rand -hex 24`).
+2. **LDAP** (the one code path no test could reach — needs your AD):
+   edit `config.deploy.yaml` → `auth.ldap` per §1, then after startup try a
+   real login at `/login`. A failed bind logs the reason in the app log;
+   `deploy/audit/audit.log` records the attempt. Verify a WRONG password is
+   rejected and 5 wrong attempts throttle (429).
+3. **Image build on your GPU box**: set `CUDA_ARCH` in `deploy/.env` for
+   your cards (Blackwell 120, Ada 89, Ampere 86, T4 75), then
+   `docker compose -f deploy/docker-compose.yml up -d --build`. First build
+   ~15–25 min + 12 GB model download. `docker ps` must show the container
+   healthy (healthcheck hits /api/health).
+4. **Acceptance eval against the live internal stack** (from any machine
+   that can reach it):
+   `KOOSYS_URL=https://<internal-url> KOOSYS_EVAL_USER=<you>
+   KOOSYS_EVAL_PASSWORD=<pw> python -m tests.accuracy_eval`
+   Expect: deterministic 6/6 with 0 clean-file FPs; LLM recall/fix numbers
+   in line with HANDOFF.md.
+5. **Real-code noise check**: put a folder of representative production
+   files on the eval machine and re-run with `EVAL_EXTRA_DIR=<folder>` —
+   review the report-only findings with the code owners.
+6. **Proxy/TLS**: front 127.0.0.1:8000 with your reverse proxy + HTTPS;
+   `auth.cookie_secure: true` is already set in the overlay. Confirm /login
+   works through the proxy and the session cookie is marked Secure.
+7. **Metrics**: point Prometheus at `/api/metrics` with
+   `bearer_token: $KOOSYS_METRICS_TOKEN`; confirm `koosys_llm_available 1`.
+8. **Ops drills** (10 min): `docker compose restart` mid-review → job is
+   marked errored, user resubmits; `git checkout <tag> && docker compose up
+   -d --build` → rollback works; confirm audit lines appear per login and
+   review, with no source code in them.
+
 ## Known limits (before wide rollout)
 - LLM findings are high-precision but not 100% recall; AUTOSAR is **guided,
   not certified** — not a compliance sign-off tool.
