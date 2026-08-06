@@ -15,6 +15,10 @@ Environment:
   EVAL_REPORT          JSON report path (default tests/eval/last_report.json)
   EVAL_MIN_LLM_RECALL  optional 0..1 gate — fail below this LLM recall
   EVAL_MAX_LLM_FPS     optional gate — fail if LLM FPs on clean files exceed it
+  EVAL_EXTRA_DIR       optional dir of REAL project files (e.g. production
+                       AUTOSAR C) — each is reviewed and reported (findings,
+                       layers, timing) with no ground-truth gating; use this
+                       to eyeball noise on representative code
 
 Exit 1 on: API failures, a missed REQUIRED deterministic finding, ANY
 deterministic finding on a clean file, or a breached optional LLM gate.
@@ -205,6 +209,46 @@ def main() -> None:
                         missed=[x["name"] for x in missed],
                         extra=len(unexpected))
         report["files"].append(frep)
+
+    # ------------------------------------------- extra real-world files
+    extra_dir = os.environ.get("EVAL_EXTRA_DIR", "")
+    if extra_dir:
+        ext_lang = {".c": "c", ".h": "c", ".cpp": "cpp", ".cc": "cpp",
+                    ".hpp": "cpp", ".py": "py", ".java": "java",
+                    ".ts": "ts", ".js": "js"}
+        extra_report = []
+        files = sorted(p for p in Path(extra_dir).rglob("*")
+                       if p.suffix.lower() in ext_lang and p.is_file())
+        print(f"\n== extra real-world files from {extra_dir} "
+              f"({len(files)} file(s), report-only) ==")
+        for p in files:
+            lang = ext_lang[p.suffix.lower()]
+            try:
+                code = p.read_text(encoding="utf-8", errors="replace")
+                job = stack.review(code, p.name, lang)
+            except Exception as exc:  # noqa: BLE001 — report, don't abort
+                print(f"  {p.name}: REVIEW FAILED: {exc}")
+                extra_report.append({"file": p.name, "error": str(exc)})
+                continue
+            vs = job.get("violations", [])
+            by_layer: dict[str, int] = {}
+            for v in vs:
+                by_layer[v["layer"]] = by_layer.get(v["layer"], 0) + 1
+            fixes = sum(1 for v in vs if (v.get("fix") or {}).get("validated"))
+            print(f"  {p.name}: {job['_elapsed']}s, {len(vs)} finding(s) "
+                  f"{by_layer}, {fixes} with fix")
+            for v in vs:
+                if v["layer"] == "llm":
+                    print(f"    llm L{v['line']}: [{v['rule']}] {v['message'][:90]}")
+            extra_report.append({
+                "file": p.name, "seconds": job["_elapsed"],
+                "findings": len(vs), "by_layer": by_layer, "fixes": fixes,
+                "llm_findings": [
+                    {"line": v["line"], "rule": v["rule"],
+                     "message": v["message"]}
+                    for v in vs if v["layer"] == "llm"],
+            })
+        report["extra_files"] = extra_report
 
     # ------------------------------------------------------------- summary
     print("\n" + "=" * 62)

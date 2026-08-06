@@ -58,6 +58,8 @@ def export_llama_for_cache() -> None:
     the kernel output so it can be published once as the cache dataset."""
     if BIN_CACHE_DS.exists():
         return  # already running from the cache — nothing new to export
+    if (OUT / "llama-bin" / "llama-server").exists():
+        return  # already exported this run
     if not (TMP_BIN / "llama-server").exists():
         print("no standalone llama-server binary to export (python-module mode?)")
         return
@@ -74,7 +76,10 @@ def main() -> None:
     os.chdir(APP)
     n = gpu_count()
     tensor_split = "1,1" if n >= 2 else "1"
-    print(f"GPUs visible: {n} -> tensor_split={tensor_split}")
+    # single-GPU sessions (P100 16 GB): smaller ctx leaves VRAM headroom for
+    # the 12 GB Q6 model + KV cache; dual T4 keeps the full window
+    ctx = 16384 if n >= 2 else 12288
+    print(f"GPUs visible: {n} -> tensor_split={tensor_split} ctx={ctx}")
 
     overlay = OUT / "acceptance_overlay.yaml"
     overlay.write_text(
@@ -85,33 +90,41 @@ def main() -> None:
         "kaggle:\n"
         "  model_dir: /kaggle/tmp/models\n"
         "  llama_server:\n"
-        f"    tensor_split: \"{tensor_split}\"\n",
+        f"    tensor_split: \"{tensor_split}\"\n"
+        f"    ctx_size: {ctx}\n",
         encoding="utf-8",
     )
     os.environ["KOOSYS_CONFIG_OVERLAY"] = str(overlay)
 
     from deploy import bootstrap as bs  # reads config AFTER the overlay is set
 
-    seed_llama_from_dataset()
-    bs.install_deps()
-    server = bs.get_llama_server()
-    model = bs.download_model()
-    bs.start_llama(server, model)
-    bs.start_backend()
-    export_llama_for_cache()
+    rc = 1
+    try:
+        seed_llama_from_dataset()
+        bs.install_deps()
+        server = bs.get_llama_server()
+        model = bs.download_model()
+        bs.start_llama(server, model)
+        bs.start_backend()
+        export_llama_for_cache()
 
-    env = dict(
-        os.environ,
-        KOOSYS_URL="http://127.0.0.1:8000",
-        EVAL_TIMEOUT="1800",
-        EVAL_REPORT=str(OUT / "last_report.json"),
-        PYTHONPATH=str(APP),
-    )
-    rc = subprocess.run([sys.executable, "-m", "tests.accuracy_eval"],
-                        env=env, cwd=APP).returncode
-
-    for f in bs.LOG_DIR.glob("*.log"):
-        shutil.copy2(f, OUT / f.name)
+        env = dict(
+            os.environ,
+            KOOSYS_URL="http://127.0.0.1:8000",
+            EVAL_TIMEOUT="1800",
+            EVAL_REPORT=str(OUT / "last_report.json"),
+            PYTHONPATH=str(APP),
+        )
+        rc = subprocess.run([sys.executable, "-m", "tests.accuracy_eval"],
+                            env=env, cwd=APP).returncode
+    finally:
+        # ALWAYS ship the service logs — a boot failure without
+        # llama-server.log is undiagnosable from the kernel log alone
+        if bs.LOG_DIR.exists():
+            for f in bs.LOG_DIR.glob("*.log"):
+                shutil.copy2(f, OUT / f.name)
+        # a failed run must still export the built binary for caching
+        export_llama_for_cache()
     print(f"\nacceptance eval exit code: {rc}")
     print(f"outputs in {OUT}: last_report.json + service logs")
     sys.exit(rc)

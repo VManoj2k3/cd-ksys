@@ -282,6 +282,9 @@ kaggle:
     parallel_slots: 2
     flash_attn: false      # T4 (compute 7.5) — leave off unless build supports it
   llama_cpp_release: "latest"  # llama.cpp release tag, or "latest"
+  # CUDA arch fallback when GPU detection fails: fat binary covering
+  # P100 (60) and T4 (75) — Kaggle assigns either to API-pushed kernels
+  cuda_archs: "60;75"
   nvcc_search_paths:
     - "/usr/local/cuda*/bin/nvcc"
     - "/opt/cuda*/bin/nvcc"
