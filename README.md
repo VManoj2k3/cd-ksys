@@ -78,8 +78,35 @@ Hardened for internal production use — see `DEPLOYMENT.md` for the runbook:
 python -m tests.test_local        # layer verification
 python -m tests.test_languages    # all language plugins
 python -m tests.test_production   # hardening suite (auth, limits, metrics)
+python -m tests.test_llm_pipeline # anti-FP gates vs a scripted adversarial model
 python -m tests.stress_test       # against a live server (KOOSYS_URL)
+python -m tests.accuracy_eval     # precision/recall report (KOOSYS_URL)
 ```
+
+## Accuracy: how "very few false positives" is enforced
+
+Detection and fixes pass through layered gates, each one **proven by
+`tests/test_llm_pipeline.py`** against a scripted adversarial model
+(hallucinated quotes, bad categories, no-op / destructive / rule-breaking
+patches — all must be rejected while planted real findings survive):
+
+1. **Findings**: category whitelist → line-anchor validation (the model must
+   quote the code; whitespace-tolerant, content-exact) → cross-chunk dedup →
+   adversarial verify pass. Unconfirmed → dropped, never shown.
+2. **Inline fixes**: bounds + proximity → no-op rejection → destructive-fix
+   guard (never deletes control flow / accumulation) → syntax gate →
+   **detector re-run**: the violation must be gone AND no new deterministic
+   finding may appear anywhere in the patched file → adversarial fix-verify
+   pass for semantic fixes. A failed gate = retry, then "manual fix required"
+   — an unvalidated patch is never displayed.
+
+The **model-dependent** half of accuracy (raw recall/FP of Qwen on the GPU)
+is measured with `tests/accuracy_eval.py` against the live stack: a labeled
+corpus (planted bugs with exact lines + clean FP-bait files) produces a
+precision/recall/fix-coverage report (`tests/eval/last_report.json`).
+Optional gates `EVAL_MIN_LLM_RECALL` / `EVAL_MAX_LLM_FPS` turn the report
+into a pass/fail acceptance test. Extend `tests/eval/manifest.yaml` with
+your own representative files before wide rollout.
 
 ## Known limits (honest ones)
 

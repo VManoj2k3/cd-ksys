@@ -51,12 +51,35 @@ Also fixed: lint dedup was collapsing ruff repeats (three `== None` lines
 reported as one) — collapse is now per-language config
 (`<lang>.collapse_repeated_lint`, on for c/cpp only).
 
+## Phase-1 accuracy work (this branch) + GPU acceptance runbook
+The detection→fix pipeline gates are now PROVEN offline by
+tests/test_llm_pipeline.py (scripted adversarial model): anchor validation
+(whitespace-tolerant), category whitelist, verifier drop path, chunk line
+numbering + overlap dedup, same-line merge, JSON-mode fallback, and the fix
+gates — no-op rejection, destructive guard, syntax gate + retry, NEW
+detector gate (patch may not introduce any new deterministic finding,
+line-shift aware), and a NEW adversarial fix-verify pass
+(prompts/fix_verify.txt, llm.fix.verify_enabled).
+
+**On the T4/on-prem stack, run the acceptance pass:**
+```
+KOOSYS_URL=<stack-url> python -m tests.accuracy_eval
+```
+It reports LLM recall on planted bugs (py_semantic_bugs.py + C/C++ corpus),
+LLM FPs on clean FP-bait files, and validated-fix coverage; JSON report in
+tests/eval/last_report.json (diff before/after tuning). Gates:
+EVAL_MIN_LLM_RECALL=0.6 EVAL_MAX_LLM_FPS=0 (tighten as the model allows).
+Knobs to iterate: llm.chunk_overlap_lines (try 30), verify.txt wording,
+llm.fix.verify_enabled. Add real AUTOSAR/ROS files + expected lines to
+tests/eval/manifest.yaml before trusting broadly.
+
 ## Open items / next steps
 1. **Verifier recall (commit 7700785, needs T4 re-test):** the adversarial
    verifier was rejecting real bugs (off-by-one, memory leak) on real C.
    Rebalanced verify.txt to keep conditional/edge-case bugs. MUST re-review a
    C snippet on the T4 stack to confirm off-by-one + leak now survive AND no
-   new false positives appear. This is the precision/recall knob to watch.
+   new false positives appear. This is the precision/recall knob to watch —
+   now measurable directly with tests/accuracy_eval.py (see runbook above).
 2. **Uninitialized-var fixes:** now steered to fix the declaration, not the
    use-site; destructive fixes (deleting return/break) are rejected. Verify
    on T4 that the uninitvar fix now targets the declaration correctly.

@@ -220,12 +220,21 @@ llm:
   # cache llama-server health probes this long (UI polling must not hammer it)
   health_cache_seconds: 5
   chunk_lines: 220        # split large files into chunks of this many lines
+  # overlap between adjacent chunks so a boundary defect is seen in context by
+  # at least one chunk. 0 = disjoint (previous behavior). Duplicates from
+  # overlapping chunks are collapsed after anchoring. Try 30 on the GPU stack
+  # and compare accuracy_eval results before/after.
+  chunk_overlap_lines: 0
   # line-anchor validation: how far from claimed line to search for quoted snippet
   anchor_search_radius: 2
   verify:
     enabled: true         # adversarial verification pass on every LLM finding
   fix:
     max_retries: 2        # regenerate a failed fix this many times
+    # adversarial re-check of every LLM-generated semantic fix: a skeptic
+    # judges whether the patch resolves the reported problem minimally.
+    # One extra (cheap) LLM call per fix; rejected fixes are retried.
+    verify_enabled: true
 
 review:
   # categories the LLM is allowed to report (anything else is rejected)
@@ -248,6 +257,10 @@ review:
   max_llm_findings: 0       # keep highest-severity N before verify (0 = all)
   max_fixes: 0              # cap LLM fix-generation calls (0 = all)
   fix_budget_seconds: 1740  # fix stage budget (just under the 30-min review cap)
+  # fix validation: a candidate patch is rejected unless the violation is gone
+  # AND no NEW deterministic finding appeared anywhere in the patched file
+  fix_detector_gate: true       # run lint+security before/after LLM fixes too
+  fix_recheck_line_window: 3    # line tolerance when matching findings pre/post patch
 
 paths:
   prompts_dir: "prompts"

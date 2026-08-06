@@ -59,18 +59,32 @@ def _numbered(lines: list[str], start: int) -> str:
     return "\n".join(f"{start + i:5d}| {ln}" for i, ln in enumerate(lines))
 
 
+def _squash_ws(text: str) -> str:
+    return " ".join(text.split())
+
+
 def _anchor(claimed_line: int, snippet: str, lines: list[str]) -> int | None:
     """Validate the model's quote against the real file. Returns the true
-    line number, or None if the quote matches nothing nearby (rejected)."""
+    line number, or None if the quote matches nothing nearby (rejected).
+
+    Comparison is whitespace-tolerant (internal spacing collapsed): a quote
+    that differs only in indentation/spacing is the same code, and dropping
+    it would cost recall with zero precision benefit. Content must still
+    match exactly otherwise."""
     radius = int(CFG.get("llm.anchor_search_radius", 2))
     want = snippet.strip()
     if not want:
         return None
+    want_sq = _squash_ws(want)
     for offset in sorted(range(-radius, radius + 1), key=abs):
         idx = claimed_line - 1 + offset
         if 0 <= idx < len(lines):
             have = lines[idx].strip()
             if want == have or (len(want) > 8 and want in have):
+                return idx + 1
+            have_sq = _squash_ws(have)
+            if want_sq and (want_sq == have_sq
+                            or (len(want_sq) > 8 and want_sq in have_sq)):
                 return idx + 1
     return None
 
@@ -79,12 +93,18 @@ async def run_llm_review(code: str, filename: str, stats: dict,
                          plugin) -> list[Violation]:
     lines = code.splitlines()
     chunk_size = int(CFG.get("llm.chunk_lines", 220))
+    # optional overlap so a defect sitting on a chunk boundary is seen with
+    # its context by at least one chunk (0 = disjoint chunks, the default;
+    # duplicates from overlapping chunks are collapsed after anchoring)
+    overlap = max(0, min(int(CFG.get("llm.chunk_overlap_lines", 0)),
+                         chunk_size - 1))
     categories = plugin.llm_categories()
     template = _prompt("review.txt")
     max_tokens = int(CFG.get("llm.max_tokens_review", 2048))
 
     tasks = []
-    for start in range(0, len(lines), chunk_size):
+    step = chunk_size - overlap if chunk_size > overlap else chunk_size
+    for start in range(0, len(lines), step):
         chunk = lines[start:start + chunk_size]
         prompt = template.format(
             language=plugin.display,
@@ -96,6 +116,8 @@ async def run_llm_review(code: str, filename: str, stats: dict,
             code_chunk=_numbered(chunk, start + 1),
         )
         tasks.append(CLIENT.chat_json(prompt, REVIEW_SCHEMA, max_tokens))
+        if start + chunk_size >= len(lines):
+            break  # final chunk reaches EOF — overlap must not re-add it
     results = await asyncio.gather(*tasks)
 
     raw: list[dict] = []
@@ -126,6 +148,20 @@ async def run_llm_review(code: str, filename: str, stats: dict,
         ))
     stats["llm_rejected_bad_anchor"] = rejected_anchor
     stats["llm_rejected_bad_category"] = rejected_category
+
+    # collapse duplicates of the same (line, category) — overlapping chunks
+    # (and chatty models) can report one defect twice; verifying it twice
+    # doubles cost and duplicates output
+    seen_keys: set[tuple[int, str]] = set()
+    unique: list[Violation] = []
+    for v in anchored:
+        key = (v.line, v.rule)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique.append(v)
+    stats["llm_deduped_same_line"] = len(anchored) - len(unique)
+    anchored = unique
 
     # AUTOSAR/MISRA idiom: `(void)Rte_Read(...)` explicitly discards the return
     # ON PURPOSE. Drop "ignored/unused return value" findings on such lines —

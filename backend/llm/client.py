@@ -34,16 +34,30 @@ class LlamaClient:
         self.timeout = float(CFG.get("llm.timeout_seconds", 300))
         self.temperature = float(CFG.get("llm.temperature", 0.0))
         self.mock = bool(CFG.get("llm.mock", False))
-        self._sem = asyncio.Semaphore(int(CFG.get("llm.max_parallel_requests", 2)))
+        self._max_parallel = int(CFG.get("llm.max_parallel_requests", 2))
+        self._sem: asyncio.Semaphore | None = None
         self._schema_mode: str | None = None  # cached working mode
         self._client: httpx.AsyncClient | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._health_cache: tuple[float, bool] | None = None  # (checked_at, up)
         self._health_ttl = float(CFG.get("llm.health_cache_seconds", 5))
 
     def _http(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
+        """Shared pooled client, recreated if the event loop changed — pooled
+        connections are bound to the loop that made them, and scripts/tests
+        that call asyncio.run() more than once would otherwise hit
+        'Event loop is closed' on reuse."""
+        loop = asyncio.get_running_loop()
+        if self._client is None or self._client.is_closed or self._loop is not loop:
             self._client = httpx.AsyncClient(timeout=self.timeout)
+            self._loop = loop
+            self._sem = None  # semaphore is loop-bound too
         return self._client
+
+    def _semaphore(self) -> asyncio.Semaphore:
+        if self._sem is None:
+            self._sem = asyncio.Semaphore(self._max_parallel)
+        return self._sem
 
     async def aclose(self) -> None:
         if self._client is not None and not self._client.is_closed:
@@ -76,7 +90,8 @@ class LlamaClient:
             if self._schema_mode
             else ["json_schema", "json_object", "plain"]
         )
-        async with self._sem:
+        self._http()  # ensure client + semaphore belong to the current loop
+        async with self._semaphore():
             for mode in modes:
                 body: dict[str, Any] = {
                     "model": self.model,

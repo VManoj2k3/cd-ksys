@@ -16,6 +16,8 @@ Rules — follow exactly:
 4. The replacement must be syntactically valid {language} in place.
 5. NEVER delete existing logic to silence a warning. Keep every return, break, continue, assignment, and function call that the original lines contain — fix the actual defect instead.
 6. For an uninitialized-variable issue, change the variable's DECLARATION line to add an initializer (e.g. `int total;` -> `int total = 0;`). Do NOT modify the line where the variable is used; set start_line/end_line to the declaration line.
+7. The replacement MUST differ from the original lines — returning them unchanged is invalid.
+8. The replacement must not introduce anything a linter would flag (unused variables/imports, insecure calls).
 
 Return JSON only:
 {{"start_line": <int>, "end_line": <int>, "replacement": "<new code text>", "explanation": "<one sentence>"}}

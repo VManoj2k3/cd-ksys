@@ -28,7 +28,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Ruff (style gate on backend + new tests)
-        run: ruff check backend/ tests/test_production.py
+        run: ruff check backend/ tests/test_production.py tests/test_llm_pipeline.py tests/fake_llm.py tests/accuracy_eval.py
 
       - name: Layer verification suite
         run: python -m tests.test_local
@@ -39,7 +39,10 @@ jobs:
       - name: Production hardening suite
         run: python -m tests.test_production
 
-      - name: Stress suite against a live server (mock LLM)
+      - name: LLM pipeline suite (scripted adversarial model)
+        run: python -m tests.test_llm_pipeline
+
+      - name: Stress + accuracy eval against a live server (mock LLM)
         run: |
           cat > /tmp/ci_overlay.yaml <<'EOF'
           server:
@@ -57,3 +60,4 @@ jobs:
             curl -sf http://127.0.0.1:8000/api/health >/dev/null && break; sleep 1
           done
           KOOSYS_URL=http://127.0.0.1:8000 python -m tests.stress_test
+          KOOSYS_URL=http://127.0.0.1:8000 python -m tests.accuracy_eval
