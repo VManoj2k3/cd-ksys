@@ -77,18 +77,25 @@ def _merge_same_line_llm(violations: list[Violation]) -> list[Violation]:
     return passthrough + [by_line[ln] for ln in order]
 
 
-def _dedup_same_finding(violations: list[Violation]) -> list[Violation]:
+def _dedup_same_finding(violations: list[Violation],
+                        collapse_lint_repeats: bool) -> list[Violation]:
     """Collapse identical findings reported at multiple use-sites — e.g.
     cppcheck reports 'Uninitialized variable: total' at every use. Keep the
     earliest line for each (rule, message).
 
-    Only LINT-layer findings are collapsed across lines: cppcheck/clang-tidy
-    are the tools that report one logical defect at every use-site. Spell,
-    security and hardcode each report DISTINCT per-line instances (six raw
-    `3` literals on six lines are six separate findings, not one), so they
-    pass through untouched — collapsing them would silently drop real hits."""
+    Only LINT-layer findings are collapsed across lines, and only when the
+    language's linters actually repeat one logical defect at every use-site
+    (cppcheck/clang-tidy — their messages carry the identifier, so same
+    message = same defect). Linters like ruff report one finding per
+    OCCURRENCE with identical message text ('comparison to None' on three
+    lines is three distinct, separately-fixable violations), so for those
+    languages the collapse is off (config: <lang>.collapse_repeated_lint).
+    Spell, security and hardcode always report distinct per-line instances
+    and pass through untouched."""
     from backend.models import Layer
 
+    if not collapse_lint_repeats:
+        return violations
     seen: dict[tuple, Violation] = {}
     passthrough: list[Violation] = []
     for v in sorted(violations, key=lambda x: x.line):
@@ -212,7 +219,9 @@ async def run_review(job: ReviewJob) -> None:
     spell_v, lint_v, sec_v, hard_v = await asyncio.gather(
         do_spell(), do_lint(), do_security(), do_hardcode()
     )
-    deterministic = _dedup_same_finding([*spell_v, *lint_v, *sec_v, *hard_v])
+    deterministic = _dedup_same_finding(
+        [*spell_v, *lint_v, *sec_v, *hard_v],
+        bool(CFG.get(f"{plugin.name}.collapse_repeated_lint", False)))
 
     # ---- LLM layers ----
     llm_st = _layer(job, "llm_review")

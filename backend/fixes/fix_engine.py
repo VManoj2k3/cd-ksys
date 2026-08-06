@@ -15,6 +15,7 @@ Failed fixes are retried (config llm.fix.max_retries), then surfaced as
 from __future__ import annotations
 
 import asyncio
+import re as _re
 from pathlib import Path
 
 from backend.app_config import CFG, PROJECT_ROOT
@@ -50,8 +51,6 @@ def apply_patch(code: str, start_line: int, end_line: int, replacement: str) -> 
     patched = lines[: start_line - 1] + new_lines + lines[end_line:]
     return "\n".join(patched) + ("\n" if code.endswith("\n") else "")
 
-
-import re as _re
 
 _CONTROL_FLOW = ("return", "break", "continue", "goto", "throw", "yield")
 

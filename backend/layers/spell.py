@@ -165,8 +165,8 @@ def run_spell_layer(code: str, plugin: LanguagePlugin) -> list[Violation]:
                         validated=valid, validation_notes=note,
                     )
                 suggestion = (
-                    f"Generated/external API name — fix the typo in the generator "
-                    f"config, not here (renaming would break the build)"
+                    "Generated/external API name — fix the typo in the generator "
+                    "config, not here (renaming would break the build)"
                     if external else
                     f"Rename to '{corrected_ident}' (all occurrences)")
                 violations.append(Violation(

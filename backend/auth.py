@@ -130,7 +130,7 @@ def _try_bind(server, user_dn: str, password: str) -> tuple[bool, str]:
         conn = Connection(server, user=user_dn, password=password, auto_bind=True)
         conn.unbind()
         return True, "ldap bind ok"
-    except Exception as exc:  # noqa: BLE001 — invalid creds or server error
+    except Exception:  # noqa: BLE001 — invalid creds or server error
         return False, "invalid credentials"
 
 

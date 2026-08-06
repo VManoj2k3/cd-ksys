@@ -38,6 +38,19 @@ false-positive suppression must be dynamic/config-driven.**
   ~0 after dynamic-vocabulary tuning; caught genuine typos (TRESHOLD, Stoped,
   Initializaton) while auto-suppressing conventions (Shft) with no word list.
 
+## Production hardening (Phase 1) — branch claude/phase-1-production-ready-*
+Landed: startup config validation (fail-fast), config overlay merge
+(config.deploy.yaml now holds only prod deltas — no more drift), structured
+logging (json option), capacity caps (concurrent reviews / active jobs /
+job-store eviction), per-user review rate limit, login throttling, request +
+upload size bounds, security headers (CSP etc.), health caching, /api/version,
+Prometheus /api/metrics (bearer token), graceful shutdown, compose healthcheck
++ log rotation + no-new-privileges, supervised entrypoint, pinned deps,
+GitHub Actions CI, tests/test_production.py (offline suite).
+Also fixed: lint dedup was collapsing ruff repeats (three `== None` lines
+reported as one) — collapse is now per-language config
+(`<lang>.collapse_repeated_lint`, on for c/cpp only).
+
 ## Open items / next steps
 1. **Verifier recall (commit 7700785, needs T4 re-test):** the adversarial
    verifier was rejecting real bugs (off-by-one, memory leak) on real C.

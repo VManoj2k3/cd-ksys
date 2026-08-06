@@ -9,14 +9,49 @@ server:
   host: "0.0.0.0"
   port: 8000
   max_file_size_kb: 512
+  # early reject for oversized request bodies (JSON escaping inflates files;
+  # keep comfortably above max_file_size_kb)
+  max_request_kb: 2048
   job_ttl_seconds: 3600
   diff_display_max_lines: 12
+  # ---- capacity limits (production) ----
+  # reviews running at once; submissions beyond this queue (state stays
+  # "queued"). Match roughly to llm.max_parallel_requests / GPU throughput.
+  max_concurrent_reviews: 2
+  # queued+running jobs beyond this are rejected with 429 (protects the queue)
+  max_active_jobs: 10
+  # total jobs kept in memory; oldest finished jobs are evicted beyond this
+  max_jobs_in_memory: 500
+  # per-user submission rate cap (429 beyond it)
+  reviews_per_user_per_minute: 12
+  # expired-job sweep interval
+  gc_interval_seconds: 60
+  # true when behind a reverse proxy that sets X-Forwarded-For (audit log
+  # then records real client IPs instead of the proxy's)
+  trust_proxy_headers: false
+  # send Strict-Transport-Security (only when serving HTTPS directly;
+  # usually the reverse proxy owns this header)
+  hsts_enabled: false
+  # bearer token for GET /api/metrics (prefer env KOOSYS_METRICS_TOKEN).
+  # empty + auth.mode=none -> metrics open; empty + auth on -> session required
+  metrics_token: ""
+
+logging:
+  level: "info"          # debug | info | warning | error | critical
+  format: "plain"        # "plain" for terminals, "json" for log shippers
+  access_log: true
 
 # ---------------- Authentication (internal deployment) ----------------
 auth:
   # "ldap" (company LDAP/AD) | "token" (shared secret) | "none" (dev only)
   mode: "none"
   session_ttl_seconds: 28800          # 8 hours
+  # login throttling: after this many FAILED attempts per (ip, username)
+  # within the window, sign-in returns 429 until the window rolls over
+  login_max_attempts: 5
+  login_window_seconds: 300
+  # broader per-IP failure cap (slows credential spraying across usernames)
+  login_ip_max_attempts: 20
   # REQUIRED for ldap/token: a long random secret to sign session cookies.
   # Set via env KOOSYS_SESSION_SECRET instead of committing it here.
   session_secret: ""
@@ -71,6 +106,9 @@ c:
   magic_numbers:
     enabled: true
     allowed: [0, 1, 2, -1]
+  # cppcheck/clang-tidy re-report ONE defect (message carries the identifier)
+  # at every use-site — collapse those repeats to the earliest line.
+  collapse_repeated_lint: true
   llm_categories: ["memory_safety", "undefined_behavior", "resource_leak",
                    "concurrency", "security", "api_misuse", "error_handling",
                    "logic_bug", "autosar"]
@@ -93,6 +131,7 @@ cpp:
   magic_numbers:
     enabled: true
     allowed: [0, 1, 2, -1]
+  collapse_repeated_lint: true
   llm_categories: ["memory_safety", "undefined_behavior", "resource_leak",
                    "concurrency", "security", "api_misuse", "error_handling",
                    "logic_bug", "autosar"]
@@ -178,6 +217,8 @@ llm:
   max_tokens_fix: 1024
   timeout_seconds: 300
   max_parallel_requests: 2
+  # cache llama-server health probes this long (UI polling must not hammer it)
+  health_cache_seconds: 5
   chunk_lines: 220        # split large files into chunks of this many lines
   # line-anchor validation: how far from claimed line to search for quoted snippet
   anchor_search_radius: 2

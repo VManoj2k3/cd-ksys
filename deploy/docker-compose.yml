@@ -14,13 +14,17 @@ services:
         CUDA_ARCH: "${CUDA_ARCH:-120}"     # Blackwell (RTX 50-series)
     image: koosys:latest
     restart: unless-stopped
+    init: true                             # reap zombies from linter subprocesses
+    security_opt:
+      - no-new-privileges:true
     # bind to loopback only — change to an internal IP behind your proxy/VPN
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      # ---- app config overrides (read by config.yaml via env, see below) ----
+      # ---- app config (config.deploy.yaml is an OVERLAY over config.yaml) ----
       KOOSYS_SESSION_SECRET: "${KOOSYS_SESSION_SECRET:?set in deploy/.env}"
-      KOOSYS_CONFIG: "/app/config.deploy.yaml"
+      KOOSYS_CONFIG_OVERLAY: "/app/config.deploy.yaml"
+      KOOSYS_METRICS_TOKEN: "${KOOSYS_METRICS_TOKEN:-}"   # Prometheus bearer token
       HF_TOKEN: "${HF_TOKEN:-}"
       # ---- llama-server ----
       TENSOR_SPLIT: "${TENSOR_SPLIT:-1,1}"
@@ -29,6 +33,17 @@ services:
       - model-cache:/models          # persists the 12 GB GGUF across restarts
       - ./audit:/app/logs            # audit log on the host
       - ./config.deploy.yaml:/app/config.deploy.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s             # first boot loads the 12 GB model
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     deploy:
       resources:
         reservations:

@@ -1,0 +1,59 @@
+# CI: lint gate + the three offline test suites (deterministic layers, all
+# languages, production hardening). The LLM layers are exercised only on GPU
+# deployments — here llama-server is absent/mocked, which the suites expect.
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install analysis toolchains
+        run: sudo apt-get update && sudo apt-get install -y cppcheck clang-tidy flawfinder
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Ruff (style gate on backend + new tests)
+        run: ruff check backend/ tests/test_production.py
+
+      - name: Layer verification suite
+        run: python -m tests.test_local
+
+      - name: Multi-language suite
+        run: python -m tests.test_languages
+
+      - name: Production hardening suite
+        run: python -m tests.test_production
+
+      - name: Stress suite against a live server (mock LLM)
+        run: |
+          cat > /tmp/ci_overlay.yaml <<'EOF'
+          server:
+            host: 127.0.0.1
+            max_active_jobs: 20
+            max_concurrent_reviews: 4
+            reviews_per_user_per_minute: 60
+          logging:
+            level: warning
+          llm:
+            mock: true
+          EOF
+          KOOSYS_CONFIG_OVERLAY=/tmp/ci_overlay.yaml python -m backend.main &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/api/health >/dev/null && break; sleep 1
+          done
+          KOOSYS_URL=http://127.0.0.1:8000 python -m tests.stress_test
