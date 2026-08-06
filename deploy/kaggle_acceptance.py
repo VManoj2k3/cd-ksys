@@ -23,12 +23,51 @@ from pathlib import Path
 
 APP = Path(__file__).resolve().parent.parent
 OUT = Path("/kaggle/working")
+BIN_CACHE_DS = Path("/kaggle/input/koosys-llama-bin")  # optional dataset cache
+TMP_BIN = Path("/kaggle/tmp/llama-bin")                # bootstrap's BIN_DIR
 sys.path.insert(0, str(APP))
 
 
 def gpu_count() -> int:
     p = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True)
     return (p.stdout or "").count("GPU ")
+
+
+def seed_llama_from_dataset() -> None:
+    """If the koosys-llama-bin dataset is attached, pre-place the binary so
+    bootstrap's cache check hits instantly — no GitHub download, no source
+    build. The dataset is created once from a previous run's output."""
+    if not BIN_CACHE_DS.exists():
+        return
+    src = BIN_CACHE_DS / "llama-bin" if (BIN_CACHE_DS / "llama-bin").exists() \
+        else BIN_CACHE_DS
+    server = src / "llama-server"
+    if not server.exists():
+        print(f"cache dataset attached but no llama-server under {src}")
+        return
+    TMP_BIN.mkdir(parents=True, exist_ok=True)
+    for f in src.iterdir():
+        if f.is_file():
+            shutil.copy2(f, TMP_BIN / f.name)
+    (TMP_BIN / "llama-server").chmod(0o755)
+    print(f"seeded llama-server from dataset cache ({src})")
+
+
+def export_llama_for_cache() -> None:
+    """Copy the working llama binary (+ shared libs, minus release zips) into
+    the kernel output so it can be published once as the cache dataset."""
+    if BIN_CACHE_DS.exists():
+        return  # already running from the cache — nothing new to export
+    if not (TMP_BIN / "llama-server").exists():
+        print("no standalone llama-server binary to export (python-module mode?)")
+        return
+    dst = OUT / "llama-bin"
+    dst.mkdir(parents=True, exist_ok=True)
+    for f in TMP_BIN.iterdir():
+        if f.is_file() and not f.name.endswith(".zip"):
+            shutil.copy2(f, dst / f.name)
+    size = sum(f.stat().st_size for f in dst.iterdir()) // (1024 * 1024)
+    print(f"exported llama-bin to kernel output for caching ({size} MB)")
 
 
 def main() -> None:
@@ -53,11 +92,13 @@ def main() -> None:
 
     from deploy import bootstrap as bs  # reads config AFTER the overlay is set
 
+    seed_llama_from_dataset()
     bs.install_deps()
     server = bs.get_llama_server()
     model = bs.download_model()
     bs.start_llama(server, model)
     bs.start_backend()
+    export_llama_for_cache()
 
     env = dict(
         os.environ,
