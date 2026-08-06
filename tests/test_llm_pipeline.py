@@ -350,6 +350,23 @@ try:
     check(fake.calls.get("fix_verify", 0) == 2,
           "verify ran on both attempts")
 
+    print("== S17: dedented patch is auto-re-indented instead of rejected ==")
+    fake.reset(
+        review=lambda p: {"violations": [finding()]},
+        fix=lambda p: {"start_line": BUG_LINE, "end_line": BUG_LINE,
+                       "replacement": GOOD_FIX.lstrip()},  # model dropped indent
+    )
+    job = review(BUGGY)
+    lv = llm_violations(job)
+    check(lv and lv[0].fix is not None and lv[0].fix.validated,
+          "fix accepted after indentation repair")
+    check(lv and lv[0].fix is not None
+          and lv[0].fix.replacement.startswith("    "),
+          "replacement carries the original indentation")
+    check(lv and lv[0].fix is not None
+          and "indentation auto-repaired" in lv[0].fix.validation_notes,
+          "repair recorded in validation notes")
+
     print("== S16: LLM duplicate of a deterministic finding folds into it ==")
     E711_FILE = "def check(x):\n    if x == None:\n        return 1\n    return 2\n"
     fake.reset(

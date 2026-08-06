@@ -99,6 +99,33 @@ def _is_noop(original_lines: list[str], replacement: str) -> bool:
     return orig == new
 
 
+def _reindent_like(span: list[str], replacement: str) -> str:
+    """Re-indent a replacement to the original span's leading whitespace.
+
+    Schema-constrained JSON output frequently strips the leading indentation
+    from patch lines; in Python that makes an otherwise-correct fix a syntax
+    error ('expected an indented block'). Shift every replacement line so the
+    first line matches the original first line's indent, preserving the
+    replacement's internal relative indentation."""
+    if not span or not replacement:
+        return replacement
+    base = span[0][:len(span[0]) - len(span[0].lstrip())]
+    rep_lines = replacement.split("\n")
+    first = next((ln for ln in rep_lines if ln.strip()), "")
+    cur = first[:len(first) - len(first.lstrip())]
+    if cur == base:
+        return replacement
+    out = []
+    for ln in rep_lines:
+        if not ln.strip():
+            out.append(ln)
+        elif ln.startswith(cur):
+            out.append(base + ln[len(cur):])
+        else:
+            out.append(base + ln.lstrip())
+    return "\n".join(out)
+
+
 # ------------------------------------------------------------ detector gate
 def _run_layer(plugin, layer: Layer, code: str, filename: str) -> list[Violation] | None:
     """Run one deterministic detector; None = tool failed (gate unavailable)."""
@@ -276,16 +303,29 @@ async def generate_fix(v: Violation, code: str, filename: str, plugin,
         patched = apply_patch(code, start, end, replacement)
         ok, syntax_note = plugin.validate_syntax(patched)
         if baseline_ok and not ok:
-            _bail(f"breaks syntax: {syntax_note[:60]}")
-            continue
+            # models routinely drop leading indentation in JSON patches —
+            # retry the same patch re-indented to the original span before
+            # burning a whole regeneration attempt
+            reindented = _reindent_like(span, replacement)
+            if reindented != replacement:
+                patched2 = apply_patch(code, start, end, reindented)
+                ok2, note2 = plugin.validate_syntax(patched2)
+                if ok2:
+                    replacement, patched = reindented, patched2
+                    ok, syntax_note = ok2, note2 + " (indentation auto-repaired)"
+            if baseline_ok and not ok:
+                _bail(f"breaks syntax: {syntax_note[:60]}")
+                continue
         new_len = len(replacement.split("\n")) if replacement else 0
         still, introduces = await _detector_verdict(
             v, patched, filename, plugin, baseline, start, end, new_len)
         if still:
-            _bail("violation still present after patch")
+            _bail(f"violation still present after patch "
+                  f"[patch: {replacement.strip()[:50]!r}]")
             continue
         if introduces:
-            _bail("patch introduces new deterministic findings")
+            _bail(f"patch introduces new deterministic findings "
+                  f"[patch: {replacement.strip()[:50]!r}]")
             continue
         approved, verify_note = await _fix_verified_by_llm(
             v, code, patched, start, end, replacement, plugin)
