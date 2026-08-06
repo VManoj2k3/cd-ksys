@@ -1,0 +1,11 @@
+# Repo lint config (for linting THIS codebase, e.g. the CI ruff gate).
+# Pins the rule families explicitly so dev machines and CI agree regardless
+# of how ruff's defaults shift between versions (0.16 widened them a lot).
+#
+# NOT used for reviewing submitted code: the app passes its own --select
+# from config.yaml (lint.ruff.select) and runs in a temp dir this file
+# cannot reach.
+target-version = "py311"
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
