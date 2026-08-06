@@ -73,13 +73,23 @@ Knobs to iterate: llm.chunk_overlap_lines (try 30), verify.txt wording,
 llm.fix.verify_enabled. Add real AUTOSAR/ROS files + expected lines to
 tests/eval/manifest.yaml before trusting broadly.
 
+## GPU-verified Phase-1 acceptance results (Kaggle P100, Qwen2.5-Coder-14B Q6)
+Measured with tests/accuracy_eval.py via the headless acceptance kernel
+(deploy/kaggle_acceptance.py, dataset-cached llama binary, ~15 min/run):
+- LLM recall on planted semantic bugs: 18/18 (py/C/C++ corpus)
+- Deterministic required findings: 6/6; deterministic FPs on clean files: 0
+- LLM FPs on clean FP-bait files: 1 (borderline advice: sync open() inside
+  an async function — technically true, debatable severity)
+- Validated-fix coverage: 21/36 findings overall, 7/12 LLM findings, after
+  indentation auto-repair; every rejected fix logs which gate refused it
+  (Violation.fix_notes). Remaining no-fixes are hard multi-edit cases
+  (C++ rule-of-three class rewrite, C overflow guard) or gates correctly
+  refusing broken model patches — precision over coverage by design.
+
 ## Open items / next steps
-1. **Verifier recall (commit 7700785, needs T4 re-test):** the adversarial
-   verifier was rejecting real bugs (off-by-one, memory leak) on real C.
-   Rebalanced verify.txt to keep conditional/edge-case bugs. MUST re-review a
-   C snippet on the T4 stack to confirm off-by-one + leak now survive AND no
-   new false positives appear. This is the precision/recall knob to watch —
-   now measurable directly with tests/accuracy_eval.py (see runbook above).
+1. ~~Verifier recall (commit 7700785, needs T4 re-test)~~ **CONFIRMED on
+   GPU**: rebalanced verify.txt keeps all conditional/edge-case bugs
+   (18/18 recall incl. off-by-one + leak) with only 1 borderline FP.
 2. **Uninitialized-var fixes:** now steered to fix the declaration, not the
    use-site; destructive fixes (deleting return/break) are rejected. Verify
    on T4 that the uninitvar fix now targets the declaration correctly.
