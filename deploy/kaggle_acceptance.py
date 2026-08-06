@@ -115,8 +115,11 @@ def main() -> None:
             EVAL_REPORT=str(OUT / "last_report.json"),
             PYTHONPATH=str(APP),
         )
-        rc = subprocess.run([sys.executable, "-m", "tests.accuracy_eval"],
-                            env=env, cwd=APP).returncode
+        # run by file path — immune to `tests` package shadowing from any
+        # site-packages on the host image (accuracy_eval has no repo imports)
+        rc = subprocess.run(
+            [sys.executable, str(APP / "tests" / "accuracy_eval.py")],
+            env=env, cwd=APP).returncode
     finally:
         # ALWAYS ship the service logs — a boot failure without
         # llama-server.log is undiagnosable from the kernel log alone
