@@ -80,11 +80,13 @@ Measured with tests/accuracy_eval.py via the headless acceptance kernel
 - Deterministic required findings: 6/6; deterministic FPs on clean files: 0
 - LLM FPs on clean FP-bait files: 1 (borderline advice: sync open() inside
   an async function — technically true, debatable severity)
-- Validated-fix coverage: 21/36 findings overall, 7/12 LLM findings, after
-  indentation auto-repair; every rejected fix logs which gate refused it
-  (Violation.fix_notes). Remaining no-fixes are hard multi-edit cases
-  (C++ rule-of-three class rewrite, C overflow guard) or gates correctly
-  refusing broken model patches — precision over coverage by design.
+- Validated-fix coverage (final run): 23/36 findings overall, 9/12 LLM
+  findings (75%), after indentation auto-repair + prompt guidance; every
+  rejected fix logs which gate refused it (Violation.fix_notes). Remaining
+  no-fixes are hard multi-edit cases (C++ rule-of-three class rewrite,
+  C overflow guard, minimal mutation-while-iterating rewrite) or gates
+  correctly refusing broken model patches — precision over coverage by
+  design: 100% of DISPLAYED fixes passed every gate.
 
 ## Open items / next steps
 1. ~~Verifier recall (commit 7700785, needs T4 re-test)~~ **CONFIRMED on
