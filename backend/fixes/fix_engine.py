@@ -235,45 +235,62 @@ async def generate_fix(v: Violation, code: str, filename: str, plugin,
         context=_numbered(lines[lo:hi], lo + 1),
     )
 
+    rejections: list[str] = []
+
+    def _bail(reason: str) -> None:
+        rejections.append(reason)
+
     for _attempt in range(retries + 1):
         res = await CLIENT.chat_json(
             prompt, FIX_SCHEMA, int(CFG.get("llm.max_tokens_fix", 1024))
         )
         if not res:
-            return None
+            _bail("no model response")
+            break
         try:
             start = int(res["start_line"])
             end = int(res["end_line"])
             replacement = str(res["replacement"])
         except (KeyError, TypeError, ValueError):
+            _bail("malformed patch JSON")
             continue
         if not (0 < start <= end <= len(lines)):
+            _bail(f"line bounds {start}-{end} outside file")
             continue
         # patch must stay near the violation
         if not (start - ctx_n <= v.line <= end + ctx_n):
+            _bail(f"patch at {start}-{end} too far from line {v.line}")
             continue
         span = lines[start - 1:end]
         # a patch that changes nothing cannot have fixed anything
         if _is_noop(span, replacement):
+            _bail("no-op patch (identical to original)")
             continue
         # reject destructive fixes: a patch must not DELETE control-flow or an
         # accumulation that was in the replaced span (e.g. turning
         # `return total;` into `int total = 0;` clears the warning but breaks
         # the function)
         if _fix_deletes_logic(span, replacement):
+            _bail("destructive (drops control flow / accumulation)")
             continue
         patched = apply_patch(code, start, end, replacement)
         ok, syntax_note = plugin.validate_syntax(patched)
         if baseline_ok and not ok:
-            continue  # fix broke the syntax — reject
+            _bail(f"breaks syntax: {syntax_note[:60]}")
+            continue
         new_len = len(replacement.split("\n")) if replacement else 0
         still, introduces = await _detector_verdict(
             v, patched, filename, plugin, baseline, start, end, new_len)
-        if still or introduces:
-            continue  # didn't fix it, or created a new problem elsewhere
+        if still:
+            _bail("violation still present after patch")
+            continue
+        if introduces:
+            _bail("patch introduces new deterministic findings")
+            continue
         approved, verify_note = await _fix_verified_by_llm(
             v, code, patched, start, end, replacement, plugin)
         if not approved:
+            _bail(f"fix-verify veto: {verify_note[:80]}")
             continue
         syntax_label = (syntax_note if ok
                         else "syntax gate skipped (original file didn't parse)")
@@ -288,6 +305,9 @@ async def generate_fix(v: Violation, code: str, filename: str, plugin,
             start_line=start, end_line=end, replacement=replacement,
             validated=True, validation_notes=notes,
         )
+    v.fix_notes = " | ".join(
+        f"attempt {i + 1}: {r}" for i, r in enumerate(rejections)) or \
+        "no fix attempts completed"
     return None
 
 

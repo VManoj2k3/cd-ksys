@@ -289,7 +289,7 @@ function cardHTML(v) {
       <div class="diff">${diffRows}</div>
     </div>`;
   } else {
-    fixHTML = `<div class="nofix">No auto-fix available — manual change recommended: ${esc(v.suggestion || v.message)}</div>`;
+    fixHTML = `<div class="nofix">No auto-fix available — manual change recommended: ${esc(v.suggestion || v.message)}${v.fix_notes ? `<div class="dim">auto-fix attempts rejected: ${esc(v.fix_notes)}</div>` : ""}</div>`;
   }
   const verif = v.layer === "llm"
     ? `<div class="verif ok">verified: ${esc(v.verification_note)}</div>`

@@ -109,10 +109,27 @@ def _dedup_same_finding(violations: list[Violation],
 
 
 _SPELLING_WORDS = ("misspell", "misspelled", "spelling", "spelled", "typo")
+_CONFIRM_NOTE = " (independently confirmed by LLM review)"
+
+
+def _confirm(d: Violation) -> None:
+    if _CONFIRM_NOTE.strip() not in (d.verification_note or ""):
+        d.verification_note = (d.verification_note or "") + _CONFIRM_NOTE
 
 
 def _dedup(deterministic: list[Violation], llm: list[Violation]) -> list[Violation]:
-    """Drop LLM findings that duplicate a deterministic finding nearby."""
+    """Drop LLM findings that duplicate a deterministic finding nearby.
+
+    On real GPU runs the LLM independently re-finds most defects that
+    cppcheck/clang-tidy/ruff already reported (use-after-free, double free,
+    leaks...) — showing both is the same bug twice. Any LLM finding within
+    the window of a LINT or SECURITY finding is folded into it as an
+    "independently confirmed" note. Hardcode (magic numbers) and spell
+    findings never absorb an LLM finding — a real bug can share a line with
+    a numeric literal. Config: review.dedup_llm_vs_deterministic (on),
+    review.dedup_window_lines."""
+    window = int(CFG.get("review.dedup_window_lines", _DEDUP_WINDOW))
+    fold_enabled = bool(CFG.get("review.dedup_llm_vs_deterministic", True))
     kept = []
     for v in llm:
         # spelling is the spell layer's job — an LLM 'finding' about a typo is
@@ -120,24 +137,22 @@ def _dedup(deterministic: list[Violation], llm: list[Violation]) -> list[Violati
         if any(w in v.message.lower() for w in _SPELLING_WORDS):
             spell_dup = next(
                 (d for d in deterministic if d.layer == Layer.SPELL
-                 and abs(d.line - v.line) <= _DEDUP_WINDOW),
+                 and abs(d.line - v.line) <= window),
                 None,
             )
             if spell_dup is not None:
-                spell_dup.verification_note = (
-                    spell_dup.verification_note or ""
-                ) + " (independently confirmed by LLM review)"
+                _confirm(spell_dup)
             continue  # drop either way
-        dup = next(
-            (d for d in deterministic if abs(d.line - v.line) <= _DEDUP_WINDOW
-             and (d.layer == Layer.SECURITY) == (v.rule == "security")),
-            None,
-        )
-        if dup is not None and v.rule in ("security", "error_handling"):
-            dup.verification_note = (
-                dup.verification_note or ""
-            ) + " (independently confirmed by LLM review)"
-            continue
+        if fold_enabled:
+            dup = next(
+                (d for d in deterministic
+                 if d.layer in (Layer.LINT, Layer.SECURITY)
+                 and abs(d.line - v.line) <= window),
+                None,
+            )
+            if dup is not None:
+                _confirm(dup)
+                continue
         kept.append(v)
     return kept
 

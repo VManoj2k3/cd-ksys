@@ -153,6 +153,10 @@ def main() -> None:
 
         frep: dict = {"path": rel, "seconds": job["_elapsed"],
                       "findings": len(violations)}
+        no_fix_notes = [f"{v['layer']}/{v['rule']} L{v['line']}: {v['fix_notes']}"
+                        for v in violations if v.get("fix_notes")]
+        if no_fix_notes:
+            frep["fix_rejections"] = no_fix_notes
         total_findings += len(violations)
         total_with_fix += sum(1 for v in violations
                               if (v.get("fix") or {}).get("validated"))
@@ -183,6 +187,8 @@ def main() -> None:
                 print(f"  found      {m['name']} (line {v['line']}, "
                       f"{v['layer']}/{v['rule']}"
                       f"{', fix ✓' if has_fix else ', no fix'})")
+                if not has_fix and v.get("fix_notes"):
+                    print(f"             why: {v['fix_notes'][:140]}")
             for x in missed:
                 required = bool(x.get("required"))
                 is_llm_target = x.get("layer") == "llm" or \

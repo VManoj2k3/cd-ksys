@@ -294,6 +294,8 @@ try:
     check(len(lv) == 1 and lv[0].fix is None,
           "finding kept, no-op patch refused")
     check(fake.calls.get("fix", 0) == 2, "no-op retried then given up")
+    check(lv and "no-op" in lv[0].fix_notes,
+          f"rejection reason recorded ({lv[0].fix_notes[:60] if lv else ''})")
 
     print("== S11: syntax-breaking fix rejected, retry succeeds ==")
     fix_count = {"n": 0}
@@ -347,6 +349,22 @@ try:
     check(lv and lv[0].fix is None, "fix-verify veto respected")
     check(fake.calls.get("fix_verify", 0) == 2,
           "verify ran on both attempts")
+
+    print("== S16: LLM duplicate of a deterministic finding folds into it ==")
+    E711_FILE = "def check(x):\n    if x == None:\n        return 1\n    return 2\n"
+    fake.reset(
+        review=lambda p: {"violations": [finding(
+            line=2, snippet="if x == None:", category="logic_bug",
+            message="Comparison to None with == instead of is.")]},
+        fix=lambda p: INERT_FIX,
+    )
+    job = review(E711_FILE, "e711_dup.py")
+    lint_vs = [v for v in job.violations if v.layer == Layer.LINT]
+    check(len(llm_violations(job)) == 0,
+          "LLM duplicate of ruff E711 not shown as second card")
+    check(any("independently confirmed" in v.verification_note
+              for v in lint_vs),
+          "deterministic finding credited with LLM confirmation")
 
     print("== S15: LINT-layer fix must clear the finding (detector re-run) ==")
     E711 = "def check(x):\n    if x == None:\n        return 1\n    return 2\n"

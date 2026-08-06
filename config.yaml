@@ -241,6 +241,11 @@ review:
   llm_categories: ["logic_bug", "security", "api_misuse", "resource_leak", "concurrency", "error_handling"]
   context_lines_for_verify: 12
   context_lines_for_fix: 15
+  # fold an LLM finding into a deterministic LINT/SECURITY finding on the
+  # same line(s): the tool already proved it, the LLM's copy becomes an
+  # "independently confirmed" note instead of a duplicate card
+  dedup_llm_vs_deterministic: true
+  dedup_window_lines: 1
   # drop LLM "ignored return value" findings on (void)-cast lines (AUTOSAR idiom)
   suppress_void_cast_ignored_return: true
   # the LLM flags NAMED constants (TRUE, ERROR_PRESENT) as "magic literals" —
