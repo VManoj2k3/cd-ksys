@@ -92,6 +92,21 @@ ALL FIVE LANGUAGES (run 7, py/C/C++/Java/TS labeled corpus):
   correctly refusing broken model patches — precision over coverage by
   design: 100% of DISPLAYED fixes passed every gate.
 
+## Real production-file validation (user's AUTOSAR .c, deterministic pass)
+Ran 3 real MICROSAR/RTE files (Com_Appl.c 2992L, PwrUState_Ovi.c 1723L,
+WarningLamp.c 493L) through the deterministic layers locally (NOT uploaded
+anywhere — proprietary code stays in-session; LLM pass is for the user's own
+stack per the on-prem model):
+- lint 0 / security 0 false positives on all three (external-call-heavy code)
+- 0 identifier FPs: dynamic vocab suppressed all ShftSpd*/despumpspd naming
+- caught REAL typos: VEH_SPEED_TRESHOLD, PwrUState_ShaftStoped, Initializaton,
+  PumpStoped, and Curent inside an Rte_ name (flagged, marked no-autofix)
+- magic numbers were high-volume on these generated templates; per user
+  decision, added c/cpp.magic_numbers.skip_on_generated (default true) —
+  suppresses magic-number findings ONLY on files detected as generated
+  (backend/detect.py, config detection.generated_markers). Hand-written files
+  still flagged. Regression-tested in test_languages.py.
+
 ## Open items / next steps
 1. ~~Verifier recall (commit 7700785, needs T4 re-test)~~ **CONFIRMED on
    GPU**: rebalanced verify.txt keeps all conditional/edge-case bugs
