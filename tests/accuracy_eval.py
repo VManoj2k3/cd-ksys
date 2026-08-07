@@ -181,12 +181,25 @@ def main() -> None:
             expects = entry.get("expect", [])
             matched, missed, unexpected = match_expects(
                 expects, violations, default_tol)
+            fix_diffs = []
             for m in matched:
                 v = m["violation"]
-                has_fix = bool((v.get("fix") or {}).get("validated"))
+                fx = v.get("fix") or {}
+                has_fix = bool(fx.get("validated"))
                 print(f"  found      {m['name']} (line {v['line']}, "
                       f"{v['layer']}/{v['rule']}"
                       f"{', fix ✓' if has_fix else ', no fix'})")
+                if has_fix:  # capture the actual patch so fixes can be eyeballed
+                    fix_diffs.append({
+                        "name": m["name"], "layer": v["layer"], "line": v["line"],
+                        "start_line": fx.get("start_line"),
+                        "end_line": fx.get("end_line"),
+                        "file_wide": fx.get("file_wide", False),
+                        "replacement": (fx.get("replacement") or "")[:400],
+                        "notes": (fx.get("validation_notes") or "")[:120],
+                    })
+            if fix_diffs:
+                frep["fix_diffs"] = fix_diffs
                 if not has_fix and v.get("fix_notes"):
                     print(f"             why: {v['fix_notes'][:140]}")
             for x in missed:
