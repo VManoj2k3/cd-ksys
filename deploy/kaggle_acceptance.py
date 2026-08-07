@@ -115,6 +115,13 @@ def main() -> None:
             EVAL_REPORT=str(OUT / "last_report.json"),
             PYTHONPATH=str(APP),
         )
+        # if the real-world public-code sample dataset is attached, review it
+        # through the full pipeline (report-only) to measure LLM FP on code
+        # neither the tool nor the tests were written against
+        wild = Path("/kaggle/input/koosys-wild-sample")
+        if wild.exists():
+            env["EVAL_EXTRA_DIR"] = str(wild)
+            print(f"wild-sample dataset mounted -> EVAL_EXTRA_DIR={wild}")
         # run by file path — immune to `tests` package shadowing from any
         # site-packages on the host image (accuracy_eval has no repo imports)
         rc = subprocess.run(
