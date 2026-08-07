@@ -75,11 +75,15 @@ tests/eval/manifest.yaml before trusting broadly.
 
 ## GPU-verified Phase-1 acceptance results (Kaggle P100, Qwen2.5-Coder-14B Q6)
 Measured with tests/accuracy_eval.py via the headless acceptance kernel
-(deploy/kaggle_acceptance.py, dataset-cached llama binary, ~15 min/run):
-- LLM recall on planted semantic bugs: 18/18 (py/C/C++ corpus)
+(deploy/kaggle_acceptance.py, dataset-cached llama binary, ~15 min/run).
+ALL FIVE LANGUAGES (run 7, py/C/C++/Java/TS labeled corpus):
+- LLM recall on planted semantic bugs: 26/26 (100%) across all 5 languages
+  — Java 4/4, TS 4/4, py 5/5+leak, C 7/7, C++ 5/5
 - Deterministic required findings: 6/6; deterministic FPs on clean files: 0
+  (5 clean FP-bait files incl. TS: all silent)
 - LLM FPs on clean FP-bait files: 1 (borderline advice: sync open() inside
   an async function — technically true, debatable severity)
+- Validated-fix coverage: 31/47 overall, 15/20 LLM findings (75%)
 - Validated-fix coverage (final run): 23/36 findings overall, 9/12 LLM
   findings (75%), after indentation auto-repair + prompt guidance; every
   rejected fix logs which gate refused it (Violation.fix_notes). Remaining
