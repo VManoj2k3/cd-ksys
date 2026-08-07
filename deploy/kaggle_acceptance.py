@@ -127,6 +127,10 @@ def main() -> None:
         rc = subprocess.run(
             [sys.executable, str(APP / "tests" / "accuracy_eval.py")],
             env=env, cwd=APP).returncode
+        # Phase 2: validate the guideline (RAG) layer against the real model
+        print("\n===== RAG guideline smoke (real LLM) =====", flush=True)
+        subprocess.run([sys.executable, str(APP / "tests" / "rag_smoke.py")],
+                       env=env, cwd=APP)
     finally:
         # ALWAYS ship the service logs — a boot failure without
         # llama-server.log is undiagnosable from the kernel log alone
