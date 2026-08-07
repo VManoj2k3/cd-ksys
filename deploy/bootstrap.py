@@ -378,6 +378,22 @@ def _server_runs(server: Path) -> bool:
     return ok
 
 
+def detected_cuda_archs() -> str:
+    """Compute capabilities of the attached GPUs (e.g. '60' P100, '75' T4).
+    Falls back to config kaggle.cuda_archs, then a P100+T4 fat binary —
+    Kaggle assigns either, and a binary built for the wrong arch dies at
+    CUDA init (llama-server never comes up)."""
+    fallback = str(CFG.get("kaggle.cuda_archs", "60;75"))
+    p = subprocess.run(
+        ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
+        capture_output=True, text=True)
+    caps = sorted({c.strip().replace(".", "") for c in p.stdout.splitlines()
+                   if c.strip()})
+    if p.returncode != 0 or not caps:
+        return fallback
+    return ";".join(caps)
+
+
 def _build_from_source(tag: str, server: Path, nvcc: Path) -> Path:
     src = WORK / "llama.cpp"
     if not (src / "CMakeLists.txt").exists():
@@ -399,10 +415,12 @@ def _build_from_source(tag: str, server: Path, nvcc: Path) -> Path:
         # lets CMake resolve CUDA::cuda_driver (needs linker-name libcuda.so)
         stub_flag = f"-DCMAKE_LIBRARY_PATH={stub_dir} "
         env["LIBRARY_PATH"] = f"{stub_dir}:{env.get('LIBRARY_PATH', '')}"
+    archs = detected_cuda_archs()
+    print(f"building for CUDA architectures: {archs}")
     sh(
         f"cmake -S {src} -B {src}/build -DGGML_CUDA=ON -DLLAMA_CURL=OFF "
         f"-DCMAKE_CUDA_COMPILER={nvcc} -DCUDAToolkit_ROOT={cuda_root} {stub_flag}"
-        f"-DCMAKE_CUDA_ARCHITECTURES=75 -DCMAKE_BUILD_TYPE=Release",
+        f"-DCMAKE_CUDA_ARCHITECTURES='{archs}' -DCMAKE_BUILD_TYPE=Release",
         check=True, env=env,
     )
     sh(f"cmake --build {src}/build --target llama-server -j {os.cpu_count()}", check=True, env=env)
@@ -525,6 +543,13 @@ def _wait_http(url: str, timeout_s: int, name: str) -> None:
                     return
         except Exception:  # noqa: BLE001
             time.sleep(3)
+    # surface the failing service's own log — without it the timeout is
+    # undiagnosable from the kernel log alone
+    for lg in sorted(LOG_DIR.glob("*.log")):
+        tail = lg.read_text(errors="ignore").splitlines()[-40:]
+        print(f"---- tail of {lg.name} ----")
+        for line in tail:
+            print(f"  {line}")
     raise RuntimeError(f"{name} did not come up within {timeout_s}s — see {LOG_DIR}")
 
 

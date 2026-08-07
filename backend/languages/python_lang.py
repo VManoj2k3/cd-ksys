@@ -53,9 +53,12 @@ class PythonPlugin(LanguagePlugin):
         return out
 
     def validate_syntax(self, code: str) -> tuple[bool, str]:
+        # compile(), not ast.parse(): the AST pass ACCEPTS 'return'/'yield'
+        # outside a function (those are compile-time checks), so a patch that
+        # lost its indentation could slip past an ast-only gate
         try:
-            ast.parse(code)
-            return True, "AST parse OK"
+            compile(code, "<review>", "exec")
+            return True, "syntax check OK"
         except SyntaxError as exc:
             return False, f"syntax error: {exc}"
 

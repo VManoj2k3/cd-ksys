@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Start llama-server (across the GPUs) + the FastAPI backend. No public tunnel.
+# Supervises both: if either dies the container exits (restart policy restarts
+# it); SIGTERM shuts both down cleanly so in-flight reviews are marked.
 set -euo pipefail
 
 MODEL_DIR="${MODEL_DIR:-/models}"
@@ -47,4 +49,19 @@ for i in $(seq 1 120); do
 done
 
 echo "[entrypoint] starting backend ..."
-exec python3 -m backend.main
+python3 -m backend.main &
+BACKEND_PID=$!
+
+shutdown() {
+  echo "[entrypoint] stopping ..."
+  kill -TERM "$BACKEND_PID" "$LLAMA_PID" 2>/dev/null || true
+}
+trap shutdown TERM INT
+
+# exit when EITHER process dies; propagate its exit code
+set +e
+wait -n "$LLAMA_PID" "$BACKEND_PID"
+CODE=$?
+shutdown
+wait
+exit $CODE

@@ -50,6 +50,9 @@ class Violation(BaseModel):
     verified: bool = True
     verification_note: str = ""
     no_autofix: bool = False   # fix engine must not generate a fix (e.g. would break build)
+    # when no validated fix could be produced: which gate rejected each attempt
+    # (diagnosis for fix coverage — shown in UI and accuracy reports)
+    fix_notes: str = ""
 
 
 class LayerStatus(BaseModel):

@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 
 from backend.app_config import CFG
+from backend.detect import generated_marker
 from backend.models import Layer, Severity, Violation
 
 # integer / hex / float literal with optional C suffixes (U/L/F)
@@ -57,6 +58,12 @@ def _strip_comments_strings(code: str) -> str:
 
 def scan_magic_numbers(code: str, lang: str) -> list[Violation]:
     if not CFG.get(f"{lang}.magic_numbers.enabled", True):
+        return []
+    # On machine-generated files (AUTOSAR RTE templates etc.) the literals come
+    # from the generator/DBC, not hand-written logic — flagging them is noise.
+    # Config-driven per language; default on. Detection markers are also config.
+    if CFG.get(f"{lang}.magic_numbers.skip_on_generated", True) and \
+            generated_marker(code):
         return []
     allowed = {str(x) for x in CFG.get(f"{lang}.magic_numbers.allowed",
                                        [0, 1, 2, -1])}

@@ -8,3 +8,6 @@ logs/
 config.deploy.local.yaml
 deploy/.env
 deploy/audit/
+
+# generated evaluation reports
+tests/eval/last_report.json

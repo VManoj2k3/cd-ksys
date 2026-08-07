@@ -7,12 +7,17 @@ Tries, in order:
 
 All settings come from config.yaml (llm.*). `mock=true` (or an unreachable
 server) disables the LLM layers gracefully — deterministic layers still run.
+
+Production notes: one shared httpx.AsyncClient (connection pooling) closed on
+app shutdown; health results are cached briefly so UI polling can't hammer
+llama-server with /models probes.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import re
+import time
 from typing import Any
 
 import httpx
@@ -29,18 +34,50 @@ class LlamaClient:
         self.timeout = float(CFG.get("llm.timeout_seconds", 300))
         self.temperature = float(CFG.get("llm.temperature", 0.0))
         self.mock = bool(CFG.get("llm.mock", False))
-        self._sem = asyncio.Semaphore(int(CFG.get("llm.max_parallel_requests", 2)))
+        self._max_parallel = int(CFG.get("llm.max_parallel_requests", 2))
+        self._sem: asyncio.Semaphore | None = None
         self._schema_mode: str | None = None  # cached working mode
+        self._client: httpx.AsyncClient | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._health_cache: tuple[float, bool] | None = None  # (checked_at, up)
+        self._health_ttl = float(CFG.get("llm.health_cache_seconds", 5))
 
-    async def health(self) -> bool:
+    def _http(self) -> httpx.AsyncClient:
+        """Shared pooled client, recreated if the event loop changed — pooled
+        connections are bound to the loop that made them, and scripts/tests
+        that call asyncio.run() more than once would otherwise hit
+        'Event loop is closed' on reuse."""
+        loop = asyncio.get_running_loop()
+        if self._client is None or self._client.is_closed or self._loop is not loop:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+            self._loop = loop
+            self._sem = None  # semaphore is loop-bound too
+        return self._client
+
+    def _semaphore(self) -> asyncio.Semaphore:
+        if self._sem is None:
+            self._sem = asyncio.Semaphore(self._max_parallel)
+        return self._sem
+
+    async def aclose(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+
+    async def health(self, force: bool = False) -> bool:
         if self.mock:
             return False
+        now = time.monotonic()
+        if not force and self._health_cache is not None:
+            checked_at, up = self._health_cache
+            if now - checked_at < self._health_ttl:
+                return up
         try:
-            async with httpx.AsyncClient(timeout=5) as cx:
-                r = await cx.get(f"{self.base_url}/models")
-                return r.status_code < 500
+            r = await self._http().get(f"{self.base_url}/models", timeout=5)
+            up = r.status_code < 500
         except httpx.HTTPError:
-            return False
+            up = False
+        self._health_cache = (now, up)
+        return up
 
     async def chat_json(
         self, prompt: str, schema: dict[str, Any], max_tokens: int
@@ -53,7 +90,8 @@ class LlamaClient:
             if self._schema_mode
             else ["json_schema", "json_object", "plain"]
         )
-        async with self._sem:
+        self._http()  # ensure client + semaphore belong to the current loop
+        async with self._semaphore():
             for mode in modes:
                 body: dict[str, Any] = {
                     "model": self.model,
@@ -69,8 +107,8 @@ class LlamaClient:
                 elif mode == "json_object":
                     body["response_format"] = {"type": "json_object"}
                 try:
-                    async with httpx.AsyncClient(timeout=self.timeout) as cx:
-                        r = await cx.post(f"{self.base_url}/chat/completions", json=body)
+                    r = await self._http().post(
+                        f"{self.base_url}/chat/completions", json=body)
                     if r.status_code >= 400:
                         continue  # try next mode
                     content = r.json()["choices"][0]["message"]["content"]

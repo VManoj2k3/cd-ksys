@@ -113,6 +113,15 @@ def main() -> int:
           "bad.ts: comment misspelling found")
     expect_clean("clean.ts")
 
+    print("== C magic-numbers: generated-file suppression ==")
+    from backend.languages.cnumbers import scan_magic_numbers
+    hand = "int scale(int x) {\n    return x * 700 + 8000;\n}\n"
+    check(len(scan_magic_numbers(hand, "c")) >= 1,
+          "hand-written C: magic numbers still flagged")
+    gen = "/* Generator: MICROSAR RTE Generator */\n" + hand
+    check(scan_magic_numbers(gen, "c") == [],
+          "generated C: magic numbers suppressed (skip_on_generated)")
+
     print(f"\n{'ALL LANGUAGE CHECKS PASSED' if not FAILURES else f'{len(FAILURES)} FAILURES'}")
     return 1 if FAILURES else 0
 

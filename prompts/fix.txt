@@ -16,6 +16,12 @@ Rules — follow exactly:
 4. The replacement must be syntactically valid {language} in place.
 5. NEVER delete existing logic to silence a warning. Keep every return, break, continue, assignment, and function call that the original lines contain — fix the actual defect instead.
 6. For an uninitialized-variable issue, change the variable's DECLARATION line to add an initializer (e.g. `int total;` -> `int total = 0;`). Do NOT modify the line where the variable is used; set start_line/end_line to the declaration line.
+7. The replacement MUST differ from the original lines — returning them unchanged is invalid.
+8. The replacement must not introduce anything a linter would flag (unused variables/imports, insecure calls).
+9. Copy the leading whitespace of the replaced lines EXACTLY, character for character — in Python a dedented replacement is a syntax error.
+10. If the correct fix requires changing a declaration or function signature, include that line in start_line..end_line and change everything consistently. When adding a C++ special member function (destructor/copy/assignment), add ALL the ones the rule of three/five requires — adding only one is an incomplete fix.
+11. In Python, never put the body on the same line as `if`/`for`/`while`/`def` — write a newline and an indented block (`if x:\n    return y`, never `if x: return y`).
+12. Use ONLY modules, functions, and variables that are already imported or defined in the visible code — never introduce a new import or an external library in a fix.
 
 Return JSON only:
 {{"start_line": <int>, "end_line": <int>, "replacement": "<new code text>", "explanation": "<one sentence>"}}

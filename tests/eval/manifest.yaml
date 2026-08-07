@@ -1,0 +1,87 @@
+# Ground truth for tests/accuracy_eval.py.
+#
+# expect entries: {name, line, layer, required?, tolerance?}
+#   layer: spell | lint | security | hardcode | llm | any
+#   required: true  -> missing it FAILS the eval (stable deterministic findings)
+#   required: false -> recall target, reported but soft (LLM/tool-version dependent)
+# clean: true -> ANY deterministic finding on the file FAILS the eval
+#   (zero-FP-by-construction promise); LLM findings are counted as FPs and
+#   reported (gate with EVAL_MAX_LLM_FPS / EVAL_MIN_LLM_RECALL on the GPU stack).
+
+defaults:
+  tolerance: 2
+
+files:
+  # ---------------- Python ----------------
+  - path: stress/subtle_bugs.py
+    language: py
+    expect:
+      - {name: mutable-default-arg-B006, line: 8, layer: lint, required: true}
+      - {name: unsafe-yaml-load-B506, line: 14, layer: security, required: true}
+      - {name: weak-md5-B324, line: 18, layer: security, required: true}
+      - {name: shell-true-B602, line: 22, layer: security, required: true}
+      - {name: misspelled-recieve, line: 25, layer: spell, required: true}
+      - {name: bare-except-E722, line: 28, layer: lint, required: true}
+      - {name: file-handle-leak, line: 33, layer: llm}
+
+  - path: eval/py_semantic_bugs.py
+    language: py
+    expect:
+      - {name: div-by-zero-empty-list, line: 12, layer: llm}
+      - {name: off-by-one-range, line: 17, layer: llm}
+      - {name: unclosed-file-handle, line: 23, layer: llm}
+      - {name: mutate-while-iterating, line: 30, layer: llm}
+      - {name: index-empty-list, line: 37, layer: llm}
+
+  - {path: stress/clean_tricky.py, language: py, clean: true}
+  - {path: stress/clean_async.py, language: py, clean: true}
+
+  # ---------------- C ----------------
+  - path: stress/c_memory_bugs.c
+    language: c
+    expect:
+      # cppcheck catches these deterministically (deallocret/doubleFree/
+      # memleak/returnDanglingLifetime); the LLM re-confirms on the GPU stack
+      - {name: use-after-free, line: 14, layer: any}
+      - {name: double-free, line: 20, layer: any}
+      - {name: leak-on-early-return, line: 28, layer: any}
+      - {name: off-by-one-fill, line: 36, layer: any}
+      - {name: return-dangling-local, line: 45, layer: any}
+      - {name: malloc-no-null-check, line: 51, layer: any}
+      - {name: alloc-size-overflow, line: 57, layer: llm}
+
+  - {path: stress/c_clean_tricky.c, language: c, clean: true}
+
+  # ---------------- C++ ----------------
+  - path: stress/cpp_memory_bugs.cpp
+    language: cpp
+    expect:
+      - {name: use-after-move, line: 8, layer: any}
+      - {name: leaking-owner-no-dtor, line: 16, layer: any}
+      - {name: iterator-invalidation, line: 24, layer: any}
+      - {name: dangling-reference, line: 31, layer: any}
+      - {name: null-deref-after-cast, line: 37, layer: llm}
+
+  - {path: stress/cpp_clean.cpp, language: cpp, clean: true}
+
+  # ---------------- Java ----------------
+  # (no Java clean entry: PMD presence/ruleset varies per stack, so a "clean"
+  #  gate would be environment-dependent; this file measures LLM recall)
+  - path: eval/JavaSemanticBugs.java
+    language: java
+    expect:
+      - {name: divide-by-zero-empty-array, line: 10, layer: llm}
+      - {name: off-by-one-loop, line: 15, layer: llm}
+      - {name: reader-never-closed, line: 24, layer: llm}
+      - {name: index-empty-list, line: 33, layer: llm}
+
+  # ---------------- TypeScript ----------------
+  - path: eval/ts_semantic_bugs.ts
+    language: ts
+    expect:
+      - {name: nan-for-empty-input, line: 9, layer: llm}
+      - {name: off-by-one-loop, line: 14, layer: llm}
+      - {name: splice-while-iterating, line: 23, layer: llm}
+      - {name: index-empty-array, line: 30, layer: llm}
+
+  - {path: lang/clean.ts, language: ts, clean: true}
