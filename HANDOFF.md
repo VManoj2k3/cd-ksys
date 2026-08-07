@@ -125,6 +125,23 @@ Conclusion: codespell-main is at the recall/precision frontier for
 "spelling without FPs" on embedded code; higher recall needs a hardcoded
 code-word allowlist, which the project's no-hardcoding rule forbids.
 
+## Real-world stress test (6 public repos, all 5 languages)
+Cloned My_AUTOSAR_Project, FreeRTOS-Kernel, nlohmann/json, requests, gson,
+darkreader. Deterministic pass over 177 sampled files (~65k lines): 0 crashes.
+Found + fixed 1 FP class (contractions: couldn't/wasn't). Full pipeline WITH
+the real LLM over 16 curated public files (Kaggle run 8, koosys-wild-sample
+dataset):
+- 9/16 files completely silent (darkreader x3, json x2, gson Expose, requests
+  flask_theme/status_codes, ...) — no FP flood on clean 3rd-party code
+- 0 hallucinations; caught a genuine real bug (gson: SimpleDateFormat not
+  thread-safe), correct unused-param/empty-function findings on Mcu stub
+- only noise: AUTOSAR ruleset is pedantic — 4x "preprocessor directive should
+  have a space" on one .c file (accurate but nitpicky; a taste call like
+  magic-numbers, tunable via the autosar prompt if desired)
+- labeled corpus held: recall 30/31, det 6/6, 1 clean-file LLM FP, fix 36/52.
+  The ONE miss = div-by-zero in the WHILE-loop style variant (caught in the
+  for-loop original) — minor LLM style-sensitivity, honest data point.
+
 ## Open items / next steps
 1. ~~Verifier recall (commit 7700785, needs T4 re-test)~~ **CONFIRMED on
    GPU**: rebalanced verify.txt keeps all conditional/edge-case bugs
