@@ -142,6 +142,25 @@ dataset):
   The ONE miss = div-by-zero in the WHILE-loop style variant (caught in the
   for-loop original) — minor LLM style-sensitivity, honest data point.
 
+## Phase 2 — RAG guideline review (SAME tool, additive toggle) — BUILT
+One tool: the Review page gained a "Check against guidelines" toggle + a
+Collections tab. Toggle OFF = Phase 1 exactly; ON = Phase 1 + a GUIDELINE
+layer that retrieves the user's uploaded coding-standard rules and flags only
+clear violations, each CITING the exact rule + source PDF, through the same
+anti-FP gates (anchor + adversarial verify) and the same fix engine.
+- backend/rag/: embedder (hash offline default | llama production), per-user
+  disk-backed vector store (pure-Python cosine, numpy fast-path, strict
+  isolation, persists), pypdf ingest (lazy import), guideline layer.
+- Per-user PRIVATE collections; multiple, multi-selectable at review time.
+- Config: rag.* block (default embedder "hash" so it works out of the box).
+  Production: switch to "llama" + a local embedding server (DEPLOYMENT.md).
+- Persistence: /app/data -> ./rag-data volume (compose). Back it up.
+- Tests: tests/test_rag.py (offline, all green) — CRUD, isolation, ingest,
+  retrieval, toggle off/on, citation, anti-FP gates, HTTP surface. In CI.
+- GPU validation: tests/rag_smoke.py runs in the acceptance kernel (real LLM:
+  violating code -> cited hit, compliant code -> silent).
+Immediate priority is STILL: deploy Phase 1+2 on the GPU box + LDAP + pilot.
+
 ## Open items / next steps
 1. ~~Verifier recall (commit 7700785, needs T4 re-test)~~ **CONFIRMED on
    GPU**: rebalanced verify.txt keeps all conditional/edge-case bugs
