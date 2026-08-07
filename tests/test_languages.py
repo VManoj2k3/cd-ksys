@@ -113,6 +113,16 @@ def main() -> int:
           "bad.ts: comment misspelling found")
     expect_clean("clean.ts")
 
+    print("== spell: embedded C types must NEVER be flagged (uint FP guard) ==")
+    from backend.layers.spell import run_spell_layer
+    c_types = ("uint8 a; uint16 b; uint32 c; sint16 d;\n"
+               "typedef struct { uint8 x; } Foo_t;\n")
+    cpl = plugin_for("x.c")
+    type_hits = [v for v in run_spell_layer(c_types, cpl)
+                 if "uint" in v.message.lower() or "sint" in v.message.lower()]
+    check(len(type_hits) == 0,
+          f"uint/sint types not flagged as typos (default dict) — got {[h.message[:40] for h in type_hits]}")
+
     print("== C magic-numbers: generated-file suppression ==")
     from backend.languages.cnumbers import scan_magic_numbers
     hand = "int scale(int x) {\n    return x * 700 + 8000;\n}\n"

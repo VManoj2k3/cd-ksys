@@ -107,6 +107,24 @@ stack per the on-prem model):
   (backend/detect.py, config detection.generated_markers). Hand-written files
   still flagged. Regression-tested in test_languages.py.
 
+## Spelling coverage investigation (whole-file, no-FP requirement)
+The spell layer already checks the WHOLE file (identifiers + comments +
+strings) via codespell with near-zero FP. Investigated two ways to catch
+MORE typos; both were tested on the real AUTOSAR files and REJECTED for
+breaking the no-FP requirement:
+- edit-distance-1 "probable typo" detector: 131 FPs on the 3 prod files
+  (SMART->start, const->coast, Init->unit, Appl->apply, shaft->shift, ...) —
+  domain abbreviations 1 edit from an English word. Removed.
+- codespell extra dictionaries: `code` has uint->unit (breaks uint8/16/32!),
+  `rare` has sate->state. Not code-safe.
+Shipped: spell.dictionaries is now config-driven (default ["main"], the
+proven-safe list); extra dicts documented as opt-in with their landmines;
+regression test locks in that uint/sint types are never flagged. Net: the
+FP-safe whole-file spelling that already existed, now hardened + tunable.
+Conclusion: codespell-main is at the recall/precision frontier for
+"spelling without FPs" on embedded code; higher recall needs a hardcoded
+code-word allowlist, which the project's no-hardcoding rule forbids.
+
 ## Open items / next steps
 1. ~~Verifier recall (commit 7700785, needs T4 re-test)~~ **CONFIRMED on
    GPU**: rebalanced verify.txt keeps all conditional/edge-case bugs

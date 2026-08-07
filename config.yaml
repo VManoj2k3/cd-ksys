@@ -175,6 +175,15 @@ spell:
   enabled: true
   min_word_length: 4
   autofix_single_suggestion_only: true
+  # which codespell curated dictionaries to load. Default is "main" only —
+  # verified FP-free on real embedded C. The extra codespell lists were tested
+  # and REJECTED as defaults because they flag domain tokens as typos:
+  #   code  -> contains "uint" -> "unit"  (breaks uint8/uint16/uint32!)
+  #   rare  -> contains "sate" -> "state"
+  #   en-GB-to-en-US / en-to-en-OX -> flag valid British spelling (initialise)
+  # You MAY add them here per your codebase (e.g. ["main","rare"] for a
+  # prose-heavy repo with no uint types), but for C/C++/embedded keep "main".
+  dictionaries: ["main"]
   check_identifiers: true
   check_comments: true
   check_strings: true
