@@ -295,6 +295,30 @@ review:
   fix_detector_gate: true       # run lint+security before/after LLM fixes too
   fix_recheck_line_window: 3    # line tolerance when matching findings pre/post patch
 
+# ---------------- Phase 2: RAG guideline review (additive, toggle-gated) ----
+rag:
+  enabled: true              # master switch for the Collection tab + toggle
+  data_dir: ""               # empty = <project>/data/rag  (persist on a volume)
+  max_collections_per_user: 20
+  max_pdf_mb: 25             # per-uploaded-document cap
+  embedder:
+    # "hash" = pure-Python offline/dev (no model). "llama" = local llama.cpp
+    # /v1/embeddings serving a small GGUF embedding model (production).
+    backend: "hash"
+    hash_dim: 256
+    base_url: "http://127.0.0.1:8090/v1"
+    model: "nomic-embed-text"
+    timeout_seconds: 60
+    batch_size: 32
+  ingest:
+    chunk_chars: 900         # target guideline-chunk size (keeps a rule whole)
+    overlap_chars: 150
+    max_chunks_per_doc: 4000
+  review:
+    rules_per_chunk: 6       # top-K guideline rules retrieved per code chunk
+    rule_chars: 500          # max rule text injected per rule
+    verify_enabled: true     # adversarial verify pass on guideline findings
+
 paths:
   prompts_dir: "prompts"
   frontend_dir: "frontend"

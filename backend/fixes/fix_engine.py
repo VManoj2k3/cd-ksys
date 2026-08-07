@@ -219,8 +219,9 @@ async def _fix_verified_by_llm(v: Violation, code: str, patched: str,
     patch resolves the reported problem without breaking behavior. Only used
     for LLM-layer findings (deterministic layers have the detector re-run,
     which is stronger). Returns (approved, reason)."""
-    if v.layer != Layer.LLM or not bool(CFG.get("llm.fix.verify_enabled", True)):
-        return True, "fix verify disabled" if v.layer == Layer.LLM else ""
+    if v.layer not in (Layer.LLM, Layer.GUIDELINE) or \
+            not bool(CFG.get("llm.fix.verify_enabled", True)):
+        return True, "fix verify disabled" if v.layer in (Layer.LLM, Layer.GUIDELINE) else ""
     lines = code.splitlines()
     ctx_n = int(CFG.get("review.context_lines_for_fix", 15))
     lo = max(0, start - 1 - ctx_n)

@@ -13,6 +13,8 @@
     <h1>Cd koosys <span class="sub">code review</span></h1>
   </div>
   <div class="header-right">
+    <nav class="topnav"><a href="/" class="navlink active">Review</a>
+      <a href="/collections" class="navlink" id="nav-collections">Collections</a></nav>
     <span id="llm-pill" class="pill pill-unknown">LLM: checking…</span>
     <span id="userbox" class="hidden"><span id="username-label"></span>
       <button id="logout-btn" class="btn">Sign out</button></span>
@@ -34,6 +36,15 @@
       <label class="btn btn-ghost" for="file-input">Upload</label>
       <input id="file-input" type="file" accept=".py,.c,.h,.cpp,.cc,.cxx,.hpp,.hh,.java,.ts,.tsx,.js,.jsx,.mjs" hidden>
       <button id="review-btn" class="btn btn-primary">Review code</button>
+    </div>
+    <div id="rag-bar" class="rag-bar hidden">
+      <label class="rag-toggle" title="Also check the code against your uploaded coding guidelines">
+        <input type="checkbox" id="rag-toggle"> <span>Check against guidelines (RAG)</span>
+      </label>
+      <select id="rag-collections" multiple size="1" class="rag-collections hidden"
+              aria-label="Guideline collections"></select>
+      <span id="rag-hint" class="dim hidden">No collections yet —
+        <a href="/collections">upload guidelines</a>.</span>
     </div>
     <div class="editor-wrap">
       <pre id="gutter" aria-hidden="true"></pre>

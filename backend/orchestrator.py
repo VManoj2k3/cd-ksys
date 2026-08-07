@@ -246,7 +246,38 @@ async def run_review(job: ReviewJob) -> None:
             llm_st.state = "error"
             llm_st.detail = str(exc)
 
-    violations = sorted([*deterministic, *llm_v], key=lambda v: (v.line, v.layer.value))
+    # ---- GUIDELINE layer (Phase 2, RAG) — additive when the toggle is on ----
+    guideline_v: list[Violation] = []
+    if job.rag_enabled and job.collection_ids:
+        # add the guideline chip dynamically (only when the toggle is on) so
+        # the Phase 1 layer list is unchanged when RAG is off
+        from backend.models import LayerStatus
+        g_st = LayerStatus(name="guideline")
+        idx = next((i for i, s in enumerate(job.layers) if s.name == "fixes"),
+                   len(job.layers))
+        job.layers.insert(idx, g_st)
+        if not job.llm_available:
+            g_st.state = "skipped"
+            g_st.detail = "llama-server unreachable — guideline layer needs the LLM"
+        else:
+            g_st.state = "running"
+            try:
+                from backend.rag.guideline import run_guideline_review
+                guideline_v = await run_guideline_review(
+                    code, filename, stats, plugin, job.user, job.collection_ids)
+                # a guideline hit on the same line as an existing finding is
+                # still distinct (it cites a specific rule) — keep both
+                g_st.found, g_st.state = len(guideline_v), "done"
+                g_st.detail = (
+                    f"raw {stats.get('guideline_raw_findings', 0)} → "
+                    f"anchored -{stats.get('guideline_rejected_bad_anchor', 0)} "
+                    f"verifier -{stats.get('guideline_rejected_by_verifier', 0)}")
+            except Exception as exc:  # noqa: BLE001 — never kill the job
+                g_st.state = "error"
+                g_st.detail = str(exc)[:200]
+
+    violations = sorted([*deterministic, *llm_v, *guideline_v],
+                        key=lambda v: (v.line, v.layer.value))
 
     # tag each violation with its enclosing function so the UI can group them
     try:

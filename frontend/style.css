@@ -159,3 +159,60 @@ main { flex: 1; display: flex; min-height: 0; }
   background: rgba(210,153,34,.1); border: 1px solid var(--orange); color: var(--orange);
   border-radius: 6px; padding: 8px 12px; font-size: 13px;
 }
+
+/* ---------------- Phase 2: collections + RAG ---------------- */
+.topnav { display: inline-flex; gap: 4px; margin-right: 12px; }
+.navlink {
+  color: var(--dim); text-decoration: none; font-size: 13px; padding: 4px 10px;
+  border-radius: 6px;
+}
+.navlink:hover { color: var(--text); background: var(--bg3); }
+.navlink.active { color: var(--text); background: var(--bg3); }
+
+.badge-guideline { background: rgba(79,142,247,.15); color: var(--accent); }
+
+.rag-bar {
+  display: flex; align-items: center; gap: 12px; margin-top: 8px;
+  flex-wrap: wrap; font-size: 13px;
+}
+.rag-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.rag-collections {
+  background: var(--bg3); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; font-size: 13px; min-width: 200px;
+}
+
+.citation {
+  border-left: 3px solid var(--accent); background: rgba(79,142,247,.07);
+  padding: 6px 10px; margin: 8px 0; border-radius: 0 6px 6px 0;
+}
+.cite-src { font-size: 12px; color: var(--accent); margin-bottom: 3px; }
+.cite-quote { font-size: 13px; color: var(--dim); font-style: italic; }
+
+/* collections page */
+.collections-main { display: block; padding: 24px; max-width: 900px; margin: 0 auto; }
+.coll-intro h2 { margin: 0 0 8px; }
+.coll-create { display: flex; gap: 8px; margin-top: 14px; }
+.coll-create input {
+  flex: 1; padding: 8px 12px; background: var(--bg3); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; font-size: 14px;
+}
+.coll-msg { min-height: 18px; font-size: 13px; margin-top: 8px; }
+.coll-msg.ok { color: var(--green); }
+.coll-msg.err { color: var(--red); }
+.coll-list { margin-top: 20px; display: grid; gap: 14px; }
+.coll-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px;
+}
+.coll-head { display: flex; justify-content: space-between; align-items: center; }
+.coll-head h3 { margin: 0; font-size: 16px; }
+.coll-stats { font-size: 12px; margin: 4px 0 10px; }
+.coll-docs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.doc-chip {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 12px;
+  padding: 2px 10px; font-size: 12px; color: var(--dim);
+}
+.coll-upload { display: flex; align-items: center; gap: 10px; }
+.up-status { font-size: 12px; }
+.btn-danger { background: rgba(248,81,73,.12); color: var(--red); padding: 3px 10px; font-size: 12px; }
+.btn-danger:hover { background: rgba(248,81,73,.2); }

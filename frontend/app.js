@@ -60,6 +60,35 @@ async function refreshHealth() {
 refreshHealth();
 setInterval(refreshHealth, 15000);
 
+/* ---------------- RAG: guideline collections ---------------- */
+const ragToggle = $("rag-toggle"), ragBar = $("rag-bar");
+const ragCollections = $("rag-collections"), ragHint = $("rag-hint");
+function selectedCollections() {
+  if (!ragToggle || !ragToggle.checked || !ragCollections) return [];
+  return Array.from(ragCollections.selectedOptions).map((o) => o.value);
+}
+async function initRag() {
+  try {
+    const h = await (await fetch("/api/health")).json();
+    if (!h.rag_enabled) return;                 // Phase 2 disabled in config
+    ragBar.classList.remove("hidden");
+    const { collections } = await (await fetch("/api/collections")).json();
+    if (!collections || !collections.length) { ragHint.classList.remove("hidden"); return; }
+    ragCollections.innerHTML = collections
+      .map((c) => `<option value="${esc(c.id)}">${esc(c.name)} (${c.chunks} rules)</option>`)
+      .join("");
+  } catch { /* RAG optional — never block the review page */ }
+}
+if (ragToggle) {
+  ragToggle.addEventListener("change", () => {
+    const on = ragToggle.checked && ragCollections.options.length > 0;
+    ragCollections.classList.toggle("hidden", !on);
+    ragCollections.size = on ? Math.min(4, ragCollections.options.length) : 1;
+    if (ragToggle.checked && ragCollections.options.length === 0) ragHint.classList.remove("hidden");
+  });
+  initRag();
+}
+
 /* ---------------- auth: show user, wire logout, handle 401 ---------------- */
 async function refreshUser() {
   try {
@@ -101,6 +130,8 @@ reviewBtn.addEventListener("click", async () => {
         code,
         filename: $("filename").value || "snippet.py",
         language: $("language").value,   // dropdown is authoritative
+        rag_enabled: ragToggle ? ragToggle.checked : false,
+        collection_ids: selectedCollections(),
       }),
     });
     if (handle401(r)) return;
@@ -163,6 +194,7 @@ function poll(jobId) {
 const LAYER_LABELS = {
   spell: "Spelling", lint: "Lint", security: "Security",
   hardcode: "Hardcoding", llm_review: "LLM review", fixes: "Fixes",
+  guideline: "Guidelines",
 };
 
 function renderLayers(layers) {
@@ -291,9 +323,18 @@ function cardHTML(v) {
   } else {
     fixHTML = `<div class="nofix">No auto-fix available — manual change recommended: ${esc(v.suggestion || v.message)}${v.fix_notes ? `<div class="dim">auto-fix attempts rejected: ${esc(v.fix_notes)}</div>` : ""}</div>`;
   }
-  const verif = v.layer === "llm"
+  const verif = (v.layer === "llm" || v.layer === "guideline")
     ? `<div class="verif ok">verified: ${esc(v.verification_note)}</div>`
     : (v.verification_note ? `<div class="verif ok">${esc(v.verification_note)}</div>` : "");
+  // guideline violations cite the exact uploaded rule they break
+  let citeHTML = "";
+  if (v.citation && v.citation.quote) {
+    const c = v.citation;
+    const src = [c.source, c.page ? `p${c.page}` : "", c.collection_name]
+      .filter(Boolean).join(" · ");
+    citeHTML = `<div class="citation"><div class="cite-src">📖 Guideline${src ? " — " + esc(src) : ""}</div>
+      <div class="cite-quote">${esc(c.quote)}</div></div>`;
+  }
   return `<div class="card sev-${v.severity}">
     <div class="card-head">
       <span class="badge badge-${v.layer}">${v.layer}</span>
@@ -302,7 +343,7 @@ function cardHTML(v) {
     </div>
     <div class="msg">${esc(v.message)}</div>
     <div class="snippet">${esc(v.snippet)}</div>
-    ${verif}${fixHTML}
+    ${citeHTML}${verif}${fixHTML}
   </div>`;
 }
 
