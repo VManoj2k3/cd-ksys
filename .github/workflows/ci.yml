@@ -28,7 +28,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Ruff (style gate on backend + new tests)
-        run: ruff check backend/ tests/test_production.py tests/test_llm_pipeline.py tests/fake_llm.py tests/accuracy_eval.py tests/test_style_robustness.py tests/test_rag.py tests/rag_smoke.py tests/stress_combined.py
+        run: ruff check backend/ tests/test_production.py tests/test_llm_pipeline.py tests/fake_llm.py tests/accuracy_eval.py tests/test_style_robustness.py tests/test_rag.py tests/rag_smoke.py tests/stress_combined.py tests/test_rag_scenarios.py
 
       - name: Layer verification suite
         run: python -m tests.test_local
@@ -47,6 +47,9 @@ jobs:
 
       - name: RAG guideline suite (Phase 2, offline)
         run: python -m tests.test_rag
+
+      - name: RAG detection scenarios (Phase 2, two real PDFs)
+        run: python -m tests.test_rag_scenarios
 
       - name: Combined whole-tool stress (self-boots token-auth server, Phase 1 + Phase 2)
         run: python tests/stress_combined.py
