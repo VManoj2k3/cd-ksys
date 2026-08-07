@@ -28,13 +28,16 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Ruff (style gate on backend + new tests)
-        run: ruff check backend/ tests/test_production.py tests/test_llm_pipeline.py tests/fake_llm.py tests/accuracy_eval.py
+        run: ruff check backend/ tests/test_production.py tests/test_llm_pipeline.py tests/fake_llm.py tests/accuracy_eval.py tests/test_style_robustness.py
 
       - name: Layer verification suite
         run: python -m tests.test_local
 
       - name: Multi-language suite
         run: python -m tests.test_languages
+
+      - name: Coding-style robustness suite
+        run: python -m tests.test_style_robustness
 
       - name: Production hardening suite
         run: python -m tests.test_production
