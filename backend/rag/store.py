@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import threading
 import time
@@ -97,7 +98,13 @@ def get_collection(user: str, collection_id: str) -> dict[str, Any] | None:
     meta_f = d / "meta.json"
     if not meta_f.exists():
         return None
-    return json.loads(meta_f.read_text(encoding="utf-8"))
+    # Defensive: with atomic _write_meta a reader always sees a complete file,
+    # but never let a corrupt/half-written meta.json raise into a request
+    # handler (that would be a 500). Treat an unreadable meta as "not found".
+    try:
+        return json.loads(meta_f.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, ValueError):
+        return None
 
 
 def delete_collection(user: str, collection_id: str) -> bool:
@@ -112,7 +119,13 @@ def delete_collection(user: str, collection_id: str) -> bool:
 
 
 def _write_meta(d: Path, meta: dict) -> None:
-    (d / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    """Atomic write: os.replace is atomic on POSIX and Windows, so a concurrent
+    reader always sees a complete meta.json — the old one or the new one, never
+    a truncated file mid-write. (Plain write_text truncates in place, which a
+    concurrent reader can catch → JSONDecodeError → a 500 in the handler.)"""
+    tmp = d / f".meta.{uuid.uuid4().hex}.tmp"
+    tmp.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    os.replace(tmp, d / "meta.json")
 
 
 # ------------------------------------------------------------------ chunks

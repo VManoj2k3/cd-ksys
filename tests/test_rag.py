@@ -146,6 +146,54 @@ try:
     check(not [v for v in job.violations if v.layer == Layer.GUIDELINE],
           "unconfirmed guideline finding dropped by verifier")
 
+    print("== concurrency: parallel writes + reads on one collection (atomic meta) ==")
+    import threading
+
+    from backend.rag.embedder import get_embedder
+    conc_user = "concwriter"
+    ccid = store.create_collection(conc_user, "parallel")["id"]
+    conc_errors: list[str] = []
+    stop = threading.Event()
+
+    def _writer(i: int) -> None:
+        try:
+            ingest.ingest_document(conc_user, ccid, f"doc{i}.pdf",
+                                   [(1, f"Rule P{i}: forbid pattern_{i} in all modules")])
+        except Exception as e:  # noqa: BLE001
+            conc_errors.append(f"writer {type(e).__name__}: {e}")
+
+    def _reader() -> None:
+        # hammer the UNLOCKED read path while writers rewrite meta.json — a
+        # non-atomic write surfaces a truncated file here (a 500 in the handler)
+        while not stop.is_set():
+            try:
+                if store.get_collection(conc_user, ccid) is None:
+                    conc_errors.append("reader saw meta as missing mid-write")
+            except Exception as e:  # noqa: BLE001
+                conc_errors.append(f"reader {type(e).__name__}: {e}")
+
+    readers = [threading.Thread(target=_reader) for _ in range(4)]
+    for r in readers:
+        r.start()
+    writers = [threading.Thread(target=_writer, args=(i,)) for i in range(24)]
+    for t in writers:
+        t.start()
+    for t in writers:
+        t.join()
+    stop.set()
+    for r in readers:
+        r.join()
+    check(not conc_errors,
+          f"parallel readers+writers, no partial-read errors ({conc_errors[:2]})")
+    cmeta = store.get_collection(conc_user, ccid)
+    # non-atomic meta writes would also lose updates (read-modify-write races)
+    check(cmeta is not None and cmeta["chunks"] == 24,
+          f"atomic meta survives concurrency: chunks={cmeta['chunks'] if cmeta else None} "
+          f"(want 24, no lost updates)")
+    hits = store.search(conc_user, [ccid], get_embedder().embed_one("pattern_7"), 3)
+    check(any("pattern_7" in h["text"] for h in hits),
+          "a rule written under contention is still retrievable")
+
     print("== HTTP surface: collections API auth + isolation ==")
     from fastapi.testclient import TestClient
     import backend.main as appmod

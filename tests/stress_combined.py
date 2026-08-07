@@ -54,21 +54,36 @@ def free_port() -> int:
 
 
 def make_pdf(text: str) -> bytes:
-    """Minimal single-page PDF with extractable text (no external deps)."""
-    stream = f"BT /F1 12 Tf 72 700 Td ({text}) Tj ET".encode()
+    """A single-page PDF with extractable text and a BYTE-ACCURATE xref table
+    (no external deps). The offsets and startxref must be exact — a bogus xref
+    parses on lenient pypdf builds but raises 'negative seek value' on strict
+    ones, so we compute real offsets as we assemble."""
+    esc = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    stream = f"BT /F1 12 Tf 72 700 Td ({esc}) Tj ET".encode("latin-1")
     objs = [
-        b"<</Type/Catalog/Pages 2 0 R>>",
-        b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
-        b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R"
-        b"/Resources<</Font<</F1 5 0 R>>>>>>",
-        b"<</Length %d>>stream\n" % len(stream) + stream + b"\nendstream",
-        b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+        b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n"
+        + stream + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     ]
-    out = b"%PDF-1.4\n"
-    for i, o in enumerate(objs, 1):
-        out += b"%d 0 obj" % i + o + b"endobj\n"
-    out += b"trailer<</Root 1 0 R/Size 6>>\nstartxref\n0\n%%EOF"
-    return out
+    out = bytearray(b"%PDF-1.4\n")
+    offsets: list[int] = []
+    for i, body in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n".encode("latin-1") + body + b"\nendobj\n"
+    xref_pos = len(out)
+    n = len(objs) + 1
+    out += f"xref\n0 {n}\n".encode("latin-1")
+    out += b"0000000000 65535 f \n"
+    for off in offsets:
+        out += f"{off:010d} 00000 n \n".encode("latin-1")
+    out += (f"trailer\n<< /Root 1 0 R /Size {n} >>\n"
+            f"startxref\n{xref_pos}\n").encode("latin-1")
+    out += b"%%EOF"
+    return bytes(out)
 
 
 class Client:

@@ -183,12 +183,27 @@ free port and hammers the whole HTTP surface (now a CI step + in the ruff gate):
 - 8 concurrent users × mixed review+collection ops → isolation holds, 0 crashes
 - final global assert: ZERO unexpected 5xx across every request in the run
 
-**Bug found + fixed (this pass):** the PDF-upload endpoint didn't catch the
-ValueError that store.get_collection raises on a malformed collection id (the
-delete endpoint did) → a bad id like `zz` returned HTTP 500. Fixed in
-backend/main.py (now 400 "Invalid collection id"); regression-locked in
-tests/test_rag.py (upload + delete of malformed ids → 400, missing id → 404).
-The review path was already safe (store.search skips bad ids).
+**Bugs found + fixed (this pass):**
+1. **Upload 500 on a malformed collection id.** The PDF-upload endpoint didn't
+   catch the ValueError that store.get_collection raises on a malformed id (the
+   delete endpoint did) → a bad id like `zz` returned HTTP 500. Fixed in
+   backend/main.py (now 400 "Invalid collection id"). The review path was
+   already safe (store.search skips bad ids).
+2. **Concurrent-upload race → intermittent 500/400.** Uploading several PDFs to
+   the SAME collection at once intermittently 500'd: store._write_meta used a
+   non-atomic write_text (truncate-in-place), so an unlocked reader (the upload
+   handler's final get_collection, or search) could catch meta.json mid-write →
+   JSONDecodeError. Fixed in backend/rag/store.py with an ATOMIC write (temp
+   file + os.replace, atomic on POSIX/Windows) plus a defensive get_collection
+   that treats an unreadable meta as "not found" instead of raising. Verified:
+   160 concurrent same-collection uploads → 0 non-200, meta.chunks exact.
+   NOTE: this was only exposed after fixing the test's PDF generator — a bogus
+   xref made every upload 400 on strict pypdf (CI pins 5.1.0; local had the
+   lenient 6.15.0), masking the race. make_pdf now emits a byte-accurate xref.
+
+Both regression-locked in tests/test_rag.py: malformed-id upload/delete → 400,
+missing id → 404, and a parallel readers+writers test that FAILS on the
+non-atomic write and PASSES on the atomic one (proven by reverting).
 
 ## Open items / next steps
 1. ~~Verifier recall (commit 7700785, needs T4 re-test)~~ **CONFIRMED on
