@@ -123,6 +123,16 @@ def main() -> int:
     check(len(type_hits) == 0,
           f"uint/sint types not flagged as typos (default dict) — got {[h.message[:40] for h in type_hits]}")
 
+    print("== spell: contractions must not false-positive ==")
+    pyp = plugin_for("x.py")
+    contr = run_spell_layer("# it couldn't and wasn't and doesn't matter\ns = \"they're here\"\n", pyp)
+    check(len(contr) == 0,
+          f"contractions (couldn't/wasn't/they're) not flagged — got {[c.message[:30] for c in contr]}")
+    # but the apostrophe-less typo codespell knows must still fire
+    still = run_spell_layer("# the code couldn work\n", pyp)
+    check(any("couldn" in v.message for v in still),
+          "apostrophe-less 'couldn' typo still caught")
+
     print("== C magic-numbers: generated-file suppression ==")
     from backend.languages.cnumbers import scan_magic_numbers
     hand = "int scale(int x) {\n    return x * 700 + 8000;\n}\n"

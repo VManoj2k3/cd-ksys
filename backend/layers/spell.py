@@ -223,6 +223,12 @@ def run_spell_layer(code: str, plugin: LanguagePlugin) -> list[Violation]:
             if tok.kind == "string" and not cfg.get("spell.check_strings", True):
                 continue
             for m in _WORD_RE.finditer(tok.text):
+                # a word immediately followed by an apostrophe is a
+                # contraction or possessive ("couldn't", "user's") — correct
+                # English, not the apostrophe-less typo codespell lists
+                # ("couldn" -> couldn't). Skip it to avoid the false positive.
+                if tok.text[m.end():m.end() + 1] in ("'", "’", "ʼ"):
+                    continue
                 for sub in _CAMEL_RE.findall(m.group(0)):
                     hit = _check_word(sub, min_len, allow)
                     if not hit:
