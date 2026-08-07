@@ -401,7 +401,11 @@ async def upload_guideline(collection_id: str, file: UploadFile = File(...),
                            user: str = Depends(require_user)):
     _require_rag()
     from backend.rag import ingest, store
-    if store.get_collection(user, collection_id) is None:
+    try:
+        exists = store.get_collection(user, collection_id) is not None
+    except ValueError:
+        raise HTTPException(400, "Invalid collection id") from None
+    if not exists:
         raise HTTPException(404, "Unknown collection")
     name = file.filename or "guideline.pdf"
     if not name.lower().endswith(".pdf"):

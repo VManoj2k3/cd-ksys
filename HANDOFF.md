@@ -161,6 +161,35 @@ anti-FP gates (anchor + adversarial verify) and the same fix engine.
   violating code -> cited hit, compliant code -> silent).
 Immediate priority is STILL: deploy Phase 1+2 on the GPU box + LDAP + pilot.
 
+## Whole-tool stress test (Phase 1 + Phase 2 combined) — DONE
+tests/stress_combined.py self-boots a token-auth + mock-LLM + RAG server on a
+free port and hammers the whole HTTP surface (now a CI step + in the ruff gate):
+- auth surface: unauth 401, public /api/me returns user=null, wrong token 401
+- Phase 1 adversarial: empty/whitespace 400, oversize 413, unknown job 404,
+  planted E711 still caught
+- Phase 2 adversarial: 8 malformed/traversal collection ids (short, non-hex,
+  overlong, uppercase, %2e%2e%2f, ../, extra-segment) all 400/404 — never 5xx;
+  non-PDF 400, oversize PDF 413, garbage PDF 400, missing collection 404
+- REAL end-to-end PDF ingest (built a valid PDF in-test, uploaded, extracted,
+  chunked, embedded, retrieved) — closes the previously-untested pypdf path;
+  auto-skips only where cryptography/pypdf is unavailable
+- cross-user isolation over HTTP: b can't see/delete/upload-to a's collection,
+  can't read a's job (403)
+- collection limit enforced (5th ok, 6th 400)
+- malformed request bodies (non-str code, missing fields, bad types, 500-long
+  collection_ids, non-JSON) all <500 — never a crash
+- append integrity: 16 concurrent uploads to ONE collection → meta.chunks==16,
+  no lost updates (store RLock holds under contention)
+- 8 concurrent users × mixed review+collection ops → isolation holds, 0 crashes
+- final global assert: ZERO unexpected 5xx across every request in the run
+
+**Bug found + fixed (this pass):** the PDF-upload endpoint didn't catch the
+ValueError that store.get_collection raises on a malformed collection id (the
+delete endpoint did) → a bad id like `zz` returned HTTP 500. Fixed in
+backend/main.py (now 400 "Invalid collection id"); regression-locked in
+tests/test_rag.py (upload + delete of malformed ids → 400, missing id → 404).
+The review path was already safe (store.search skips bad ids).
+
 ## Open items / next steps
 1. ~~Verifier recall (commit 7700785, needs T4 re-test)~~ **CONFIRMED on
    GPU**: rebalanced verify.txt keeps all conditional/edge-case bugs

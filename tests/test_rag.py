@@ -171,6 +171,24 @@ try:
               "other user sees none (isolation over HTTP)")
         check(client.delete(f"/api/collections/{cid}", headers=bh).status_code == 404,
               "other user cannot delete someone else's collection")
+        # malformed collection ids must be rejected cleanly (400), never crash
+        # the server (500). Upload took a different path than delete and used
+        # to 500 on a bad id — regression guard for both verbs.
+        for bad in ("zz", "gggggggg", "AAAA1111", "0" * 50):
+            up = client.post(f"/api/collections/{bad}/upload",
+                             files={"file": ("g.pdf", b"x", "application/pdf")},
+                             headers=ah)
+            check(up.status_code == 400,
+                  f"upload to malformed id {bad!r} -> {up.status_code} (want 400, not 500)")
+            de = client.delete(f"/api/collections/{bad}", headers=ah)
+            check(de.status_code == 400,
+                  f"delete of malformed id {bad!r} -> {de.status_code} (want 400)")
+        # well-formed but non-existent id -> 404 (not 400, not 500)
+        miss = client.post("/api/collections/deadbeefdeadbeef/upload",
+                           files={"file": ("g.pdf", b"x", "application/pdf")},
+                           headers=ah)
+        check(miss.status_code == 404,
+              f"upload to missing collection -> {miss.status_code} (want 404)")
         # unauth blocked
         check(client.get("/api/collections").status_code == 401,
               "collections API requires auth")
