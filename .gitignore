@@ -11,3 +11,7 @@ deploy/audit/
 
 # generated evaluation reports
 tests/eval/last_report.json
+
+# Phase 2 RAG data (per-user collections + embeddings)
+data/rag/
+deploy/rag-data/

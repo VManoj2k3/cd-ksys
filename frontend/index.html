@@ -13,6 +13,8 @@
     <h1>Cd koosys <span class="sub">code review</span></h1>
   </div>
   <div class="header-right">
+    <nav class="topnav"><a href="/" class="navlink active">Review</a>
+      <a href="/collections" class="navlink" id="nav-collections">Collections</a></nav>
     <span id="llm-pill" class="pill pill-unknown">LLM: checking…</span>
     <span id="userbox" class="hidden"><span id="username-label"></span>
       <button id="logout-btn" class="btn">Sign out</button></span>
@@ -33,7 +35,17 @@
       <input id="filename" type="text" value="snippet.py" spellcheck="false" aria-label="Filename">
       <label class="btn btn-ghost" for="file-input">Upload</label>
       <input id="file-input" type="file" accept=".py,.c,.h,.cpp,.cc,.cxx,.hpp,.hh,.java,.ts,.tsx,.js,.jsx,.mjs" hidden>
-      <button id="review-btn" class="btn btn-primary">Review code</button>
+      <button id="example-btn" class="btn btn-ghost" title="Load a sample with planted issues">Try an example</button>
+      <button id="review-btn" class="btn btn-primary" title="Run review (Ctrl/⌘+Enter)">Review code</button>
+    </div>
+    <div id="rag-bar" class="rag-bar hidden">
+      <label class="rag-toggle" title="Also check the code against your uploaded coding guidelines">
+        <input type="checkbox" id="rag-toggle"> <span>Check against guidelines (RAG)</span>
+      </label>
+      <div id="rag-collections" class="rag-collections hidden" role="group"
+           aria-label="Guideline collections to check against"></div>
+      <span id="rag-hint" class="dim hidden">No collections yet —
+        <a href="/collections">upload guidelines</a>.</span>
     </div>
     <div class="editor-wrap">
       <pre id="gutter" aria-hidden="true"></pre>
@@ -42,12 +54,14 @@
   </section>
 
   <section class="results-pane">
-    <div id="layers" class="layers hidden"></div>
-    <div id="summary" class="summary hidden"></div>
+    <div id="layers" class="pipeline hidden"></div>
+    <div id="summary" class="scorecard hidden"></div>
+    <div id="filterbar" class="filterbar hidden"></div>
     <div id="results" class="results">
       <div class="empty-state">
-        <p>Paste code and hit <b>Review code</b>.</p>
-        <p class="dim">Deterministic layers (lint · security · spelling) plus LLM semantic review with adversarial verification. Every fix shown here has been applied, parsed, and re-checked before you see it.</p>
+        <div class="clean-badge">🛡️</div>
+        <p class="big">Paste code and hit <b>Review code</b>.</p>
+        <p class="dim">A layered pipeline — spelling · lint · security · LLM semantic review with adversarial verification — plus optional checks against your own uploaded guidelines. Every fix shown here has been applied, parsed, and re-checked before you see it.</p>
       </div>
     </div>
   </section>

@@ -24,6 +24,8 @@ Handler = Callable[[str], dict | str]
 
 _MARKERS = [
     ("review", "Report violations ONLY in these categories"),
+    ("guideline_verify", "double-checking one claimed coding-guideline"),
+    ("guideline", "checking code against SPECIFIC coding-guideline"),
     ("verify", "double-checking one candidate finding"),
     ("fix_verify", "judging a PROPOSED PATCH"),
     ("fix", "You fix one specific violation"),
@@ -31,6 +33,8 @@ _MARKERS = [
 
 DEFAULTS: dict[str, Handler] = {
     "review": lambda p: {"violations": []},
+    "guideline": lambda p: {"violations": []},
+    "guideline_verify": lambda p: {"confirmed": True, "reason": "default confirm"},
     "verify": lambda p: {"confirmed": True, "reason": "default confirm"},
     "fix_verify": lambda p: {"approved": True, "reason": "default approve"},
     "fix": lambda p: {"start_line": 1, "end_line": 1, "replacement": ""},

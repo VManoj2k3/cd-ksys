@@ -79,9 +79,32 @@ python -m tests.test_local        # layer verification
 python -m tests.test_languages    # all language plugins
 python -m tests.test_production   # hardening suite (auth, limits, metrics)
 python -m tests.test_llm_pipeline # anti-FP gates vs a scripted adversarial model
+python -m tests.test_style_robustness  # same bug/clean code across styles
+python -m tests.test_rag          # Phase 2 guideline pipeline (offline)
 python -m tests.stress_test       # against a live server (KOOSYS_URL)
 python -m tests.accuracy_eval     # precision/recall report (KOOSYS_URL)
 ```
+
+## Phase 2 — guideline review (RAG), same tool, toggle-gated
+
+The **Collections** tab lets each user upload their own coding-standard PDFs
+(MISRA, AUTOSAR, an internal style guide). On the Review page a **"Check
+against guidelines"** toggle turns on retrieval-augmented review:
+
+- **Off** → exactly the Phase 1 review above (unchanged).
+- **On** → Phase 1 **plus** a guideline layer: for each code chunk the most
+  relevant rules are retrieved from the selected collection(s), the model
+  flags only **clear violations of those specific rules**, and each finding
+  **cites the exact rule text + source PDF**. The same anti-FP gates apply
+  (line-anchor validation + adversarial verify), and inline fixes are
+  generated the same way.
+
+Fully on-prem: local embeddings, a **per-user, disk-backed vector store**
+(collections are private and persist across restarts), no cloud. The default
+embedder (`rag.embedder.backend: hash`) is a pure-Python offline embedder that
+works out of the box; for production semantic retrieval, point it at a local
+embedding model (`llama` backend — see `DEPLOYMENT.md`). Everything is
+additive and toggle-gated, so enabling Phase 2 cannot change Phase 1 behavior.
 
 ## Accuracy: how "very few false positives" is enforced
 
