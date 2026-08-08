@@ -152,14 +152,46 @@ PY_PDF = make_pdf([
     "Rule PYDOC-03: Every TODO comment must reference a tracking ticket, for "
     "example TODO PROJ-123.",
 ])
+JAVA_PDF = make_pdf([
+    "ACME Java Engineering Guidelines\n"
+    "Rule JAVA-01: Do not call System.out.println in production code. Route "
+    "output through a logging framework such as SLF4J.\n"
+    "Rule JAVA-02: Never catch the generic Exception type; catch the specific "
+    "exceptions you can actually handle.\n"
+    "Rule JAVA-03: Do not compare strings with the == operator; use the equals "
+    "method instead.",
+])
+TS_PDF = make_pdf([
+    "ACME TypeScript Engineering Guidelines\n"
+    "Rule TS-01: Do not use the any type. Declare precise types so the compiler "
+    "can check them.\n"
+    "Rule TS-02: Always use strict equality (===) and never the loose == "
+    "operator.\n"
+    "Rule TS-03: Do not leave console.log calls in committed code; use the "
+    "project logger.",
+])
+CPP_PDF = make_pdf([
+    "ACME C++ Engineering Guidelines\n"
+    "Rule CPP-01: Do not put using namespace std at global or namespace scope in "
+    "headers or shared code.\n"
+    "Rule CPP-02: Use nullptr for null pointers, never NULL or the literal 0.\n"
+    "Rule CPP-03: Do not manage memory with raw new and delete; use smart "
+    "pointers such as std::make_unique.",
+])
 
 USER = "eng"
 c_cid = store.create_collection(USER, "Secure C Standard")["id"]
 py_cid = store.create_collection(USER, "Python Guidelines")["id"]
+java_cid = store.create_collection(USER, "Java Guidelines")["id"]
+ts_cid = store.create_collection(USER, "TypeScript Guidelines")["id"]
+cpp_cid = store.create_collection(USER, "C++ Guidelines")["id"]
 nc = ingest.ingest_pdf(USER, c_cid, "ACME_Secure_C_Standard.pdf", C_PDF)
 npy = ingest.ingest_pdf(USER, py_cid, "ACME_Python_Guidelines.pdf", PY_PDF)
-print(f"ingested C standard -> {nc} chunk(s); Python guidelines -> {npy} chunk(s)")
-if nc < 1 or npy < 1:
+nj = ingest.ingest_pdf(USER, java_cid, "ACME_Java_Guidelines.pdf", JAVA_PDF)
+nt = ingest.ingest_pdf(USER, ts_cid, "ACME_TypeScript_Guidelines.pdf", TS_PDF)
+ncpp = ingest.ingest_pdf(USER, cpp_cid, "ACME_Cpp_Guidelines.pdf", CPP_PDF)
+print(f"ingested 5 language PDFs -> C:{nc} Py:{npy} Java:{nj} TS:{nt} C++:{ncpp} chunk(s)")
+if min(nc, npy, nj, nt, ncpp) < 1:
     print("FAIL: PDF ingestion produced no chunks")
     sys.exit(1)
 
@@ -175,6 +207,14 @@ DETECTORS = [
     (re.compile(r"\bgoto\b"), "goto", "Uses goto — forbidden (CTRL-04)."),
     (re.compile(r"\bprint\s*\("), "print", "print() in a module — use logging (PYLOG-01)."),
     (re.compile(r"\beval\s*\("), "eval", "eval() on input — injection risk (PYSEC-02)."),
+    (re.compile(r"System\.out\.print"), "system.out", "System.out.println (JAVA-01)."),
+    (re.compile(r"catch\s*\(\s*Exception\b"), "generic exception", "catches Exception (JAVA-02)."),
+    (re.compile(r"(?<![=!<>])==(?!=)"), "==", "loose == comparison (JAVA-03/TS-02)."),
+    (re.compile(r":\s*any\b"), "any type", "uses the any type (TS-01)."),
+    (re.compile(r"console\.log"), "console.log", "console.log left in (TS-03)."),
+    (re.compile(r"using\s+namespace\s+std"), "using namespace std", "using namespace std (CPP-01)."),
+    (re.compile(r"\bnew\b"), "raw new", "raw new (CPP-03)."),
+    (re.compile(r"\bNULL\b"), "nullptr", "NULL not nullptr (CPP-02)."),
 ]
 
 
@@ -317,6 +357,54 @@ try:
     check(bool(gv) and gv[0].fix is not None and gv[0].fix.validated,
           f"inline fix present + validated "
           f"({gv[0].fix.replacement.strip() if gv and gv[0].fix else None})")
+
+    # ---- S13-S15: the other three languages (Java, TypeScript, C++) ----
+    JAVA_BAD = ('public class Svc {\n  String check(String a, String b) {\n'
+                '    System.out.println("checking");\n'
+                '    if (a == b) { return "same"; }\n'
+                '    try { return a.trim(); } catch (Exception e) { return ""; }\n'
+                '  }\n}\n')
+    JAVA_OK = ('import org.slf4j.Logger;\nimport org.slf4j.LoggerFactory;\n'
+               'public class Svc {\n'
+               '  private static final Logger log = LoggerFactory.getLogger(Svc.class);\n'
+               '  String check(String a, String b) {\n    log.info("checking");\n'
+               '    if (a.equals(b)) { return "same"; }\n'
+               '    try { return a.trim(); } catch (NullPointerException e) { return ""; }\n'
+               '  }\n}\n')
+    TS_BAD = ('function parse(input: any): number {\n  console.log(input);\n'
+              '  if (input == null) { return 0; }\n  return input.length;\n}\n')
+    TS_OK = ('function parse(input: string | null): number {\n'
+             '  if (input === null) { return 0; }\n  return input.length;\n}\n')
+    CPP_BAD = ('#include <cstddef>\nusing namespace std;\n'
+               'int* make() {\n  int* p = new int(5);\n'
+               '  if (p == NULL) { return NULL; }\n  return p;\n}\n')
+    CPP_OK = ('#include <memory>\nstd::unique_ptr<int> make() {\n'
+              '  auto p = std::make_unique<int>(5);\n'
+              '  if (p == nullptr) { return nullptr; }\n  return p;\n}\n')
+    langs = [
+        ("S13 Java", "java", java_cid, "ACME_Java_Guidelines.pdf", JAVA_BAD, JAVA_OK),
+        ("S14 TypeScript", "ts", ts_cid, "ACME_TypeScript_Guidelines.pdf", TS_BAD, TS_OK),
+        ("S15 C++", "cpp", cpp_cid, "ACME_Cpp_Guidelines.pdf", CPP_BAD, CPP_OK),
+    ]
+    for label, lang, lcid, src, bad, good in langs:
+        print(f"== {label}: violating -> cited to its PDF; compliant -> silent ==")
+        fake.reset(guideline=faithful_judge, guideline_verify=confirm, **NO_REVIEW)
+        job = review(bad, lang, USER, rag=True, cids=[lcid])
+        gv = gviol(job)
+        check(len(gv) >= 2, f"{label} violations detected ({len(gv)})")
+        check(bool(gv) and all(v.citation and v.citation.source == src for v in gv),
+              f"{label} findings cite {src}")
+        job = review(good, lang, USER, rag=True, cids=[lcid])
+        check(gviol(job) == [], f"{label} compliant stays silent ({len(gviol(job))})")
+
+    # ---- S16: all 5 collections selected at once -> correct attribution ----
+    print("== S16: all 5 collections selected, TS bug -> cites the TS PDF only ==")
+    fake.reset(guideline=faithful_judge, guideline_verify=confirm, **NO_REVIEW)
+    job = review(TS_BAD, "ts", USER, rag=True,
+                 cids=[c_cid, py_cid, java_cid, ts_cid, cpp_cid])
+    gv = gviol(job)
+    check(bool(gv) and all(v.citation.source == "ACME_TypeScript_Guidelines.pdf" for v in gv),
+          f"TS bug cites the TS PDF even with all 5 selected ({len(gv)} findings)")
 finally:
     fake.stop()
 
@@ -326,4 +414,4 @@ if FAIL:
     for f in FAIL:
         print("  -", f)
     sys.exit(1)
-print("ALL RAG SCENARIO CHECKS PASSED (12 scenarios, 2 real PDFs)")
+print("ALL RAG SCENARIO CHECKS PASSED (16 scenarios, all 5 languages, real PDFs)")
