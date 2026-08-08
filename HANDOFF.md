@@ -186,6 +186,21 @@ RAG toggle on (default `hash` embedder). RAG SMOKE: PASS.
 - Locked into CI offline (tests/test_rag_scenarios.py, 16 scenarios, all 5
   languages) + re-measured on GPU each acceptance run (tests/rag_smoke.py).
 
+## Recall-boost attempt (run 13) — HONEST NEGATIVE RESULT
+Added an explicit "report EVERY violation per chunk" rule to review.txt +
+guideline.txt to fix the "reports only the most salient of several violations"
+behavior. Re-measured on GPU (run 13): **no change**. The multi-violation
+scenarios were byte-identical to run 12 (S4/S8/S10/S12 still 1 finding each);
+Phase-1 held at 30/31 with 0 FP; Phase-2 stayed 7/7 detected, 11/11 correct
+citations, 0 FP. At temperature 0 the same prompt+code yields the same output,
+so a prompt nudge alone does not make the model enumerate every violation.
+The instruction is sound and harmless (no regression) so it was kept, but the
+real lever is ARCHITECTURAL: judge each retrieved rule in its own pass
+("does the code break THIS rule? list every offending line") instead of one
+call for all rules — at the cost of more LLM calls per chunk. Not yet built.
+Precision remains the tool's strength; per-file recall is "at least the worst
+offense," tunable via the per-rule pass if desired.
+
 ## Whole-tool stress test (Phase 1 + Phase 2 combined) — DONE
 tests/stress_combined.py self-boots a token-auth + mock-LLM + RAG server on a
 free port and hammers the whole HTTP surface (now a CI step + in the ruff gate):
