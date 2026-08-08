@@ -9,7 +9,8 @@ Rules for your judgement — follow exactly:
 3. Give the EXACT line number and copy the EXACT code text of that line into "snippet" (character-for-character from the numbered listing, without the line-number prefix).
 4. "severity" must be one of: low, medium, high, critical.
 5. Do NOT report general bugs, style, or spelling — a separate review handles those. ONLY rule violations.
-6. If nothing clearly violates a listed rule, return {{"violations": []}}.
+6. Be COMPLETE: check the code against EVERY numbered rule and report EVERY line that clearly breaks any rule. A single file may violate several different rules, and one rule may be broken on more than one line — list ALL of them as separate entries. Do not stop after the first violation. This does NOT lower rule 1 — only report clear violations.
+7. If nothing clearly violates a listed rule, return {{"violations": []}}.
 
 Return JSON only:
 {{"violations": [{{"line": <int>, "snippet": "<exact code on that line>", "rule_index": <int>, "severity": "<low|medium|high|critical>", "message": "<which rule is violated and why, one or two sentences>"}}]}}
