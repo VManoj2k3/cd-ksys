@@ -53,12 +53,13 @@
   </section>
 
   <section class="results-pane">
-    <div id="layers" class="layers hidden"></div>
-    <div id="summary" class="summary hidden"></div>
+    <div id="layers" class="pipeline hidden"></div>
+    <div id="summary" class="scorecard hidden"></div>
     <div id="results" class="results">
       <div class="empty-state">
-        <p>Paste code and hit <b>Review code</b>.</p>
-        <p class="dim">Deterministic layers (lint · security · spelling) plus LLM semantic review with adversarial verification. Every fix shown here has been applied, parsed, and re-checked before you see it.</p>
+        <div class="clean-badge">🛡️</div>
+        <p class="big">Paste code and hit <b>Review code</b>.</p>
+        <p class="dim">A layered pipeline — spelling · lint · security · LLM semantic review with adversarial verification — plus optional checks against your own uploaded guidelines. Every fix shown here has been applied, parsed, and re-checked before you see it.</p>
       </div>
     </div>
   </section>

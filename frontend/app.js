@@ -198,35 +198,72 @@ const LAYER_LABELS = {
 };
 
 function renderLayers(layers) {
-  layersEl.innerHTML = layers.map((l) => {
-    const spin = l.state === "running" ? '<span class="spin"></span>' : "";
-    const count = l.state === "done" && l.name !== "fixes" ? ` · ${l.found}` : "";
-    const cls = l.state === "skipped" ? "" : l.state;
-    return `<span class="layer-chip ${cls}" title="${esc(l.detail)}">${spin}${LAYER_LABELS[l.name] || l.name}${count}${l.state === "skipped" ? " · off" : ""}</span>`;
-  }).join("");
+  const parts = [];
+  layers.forEach((l, i) => {
+    if (i > 0) {
+      const prev = layers[i - 1].state;
+      const done = prev === "done" || prev === "skipped";
+      parts.push(`<div class="conn ${done ? "filled" : ""}"></div>`);
+    }
+    const known = ["running", "done", "skipped", "error"];
+    const cls = known.includes(l.state) ? l.state : "pending";
+    const hasFind = l.state === "done" && l.name !== "fixes" && l.found > 0;
+    let node;
+    if (l.state === "running") node = '<span class="spin"></span>';
+    else if (l.state === "done") node = "✓";
+    else if (l.state === "skipped") node = "–";
+    else if (l.state === "error") node = "!";
+    else node = "•";
+    let count = "";
+    if (l.state === "done") count = `<span class="stage-count">${l.found}</span>`;
+    else if (l.state === "skipped") count = `<span class="stage-count dim">off</span>`;
+    parts.push(`<div class="stage ${cls}${hasFind ? " has-findings" : ""}" title="${esc(l.detail || "")}">
+      <div class="node">${node}</div>
+      <span class="stage-name">${LAYER_LABELS[l.name] || l.name}</span>${count}
+    </div>`);
+  });
+  layersEl.innerHTML = parts.join("");
 }
 
 function renderResults(job) {
   const vs = job.violations;
   const bySev = {};
   vs.forEach((v) => { bySev[v.severity] = (bySev[v.severity] || 0) + 1; });
+  const order = ["critical", "high", "medium", "low", "info"];
+  const present = order.filter((s) => bySev[s]);
+  const layersRun = (job.layers || []).filter((l) => l.state === "done").length;
+  const llmStat = (job.stats && job.stats.llm_raw_findings !== undefined)
+    ? `<span>LLM precision filter: <b>${job.stats.llm_raw_findings}</b> raw → <b>${vs.filter((v) => v.layer === "llm").length}</b> confirmed</span>`
+    : "";
+  const langMeta = job.language ? `<span>language <b>${esc(job.language)}</b></span>` : "";
   summaryEl.classList.remove("hidden");
-  summaryEl.innerHTML =
-    (job.language ? `<span>lang: <b>${esc(job.language)}</b></span>` : "") +
-    `<span><b>${vs.length}</b> violation${vs.length === 1 ? "" : "s"}</span>` +
-    ["critical", "high", "medium", "low", "info"]
-      .filter((s) => bySev[s])
-      .map((s) => `<span>${s}: <b>${bySev[s]}</b></span>`).join("") +
-    (job.stats && job.stats.llm_raw_findings !== undefined
-      ? `<span class="dim">LLM precision filter: ${job.stats.llm_raw_findings} raw → ${vs.filter((v) => v.layer === "llm").length} confirmed</span>`
-      : "") +
-    (vs.length ? `<button id="copy-btn" class="btn btn-copy">Copy all</button>` : "");
 
   if (!vs.length) {
-    resultsEl.innerHTML = `<div class="empty-state"><p>No violations found.</p>${
-      job.llm_available ? "" : '<p class="dim">Note: LLM layer was offline — only deterministic checks ran.</p>'}</div>`;
+    summaryEl.innerHTML =
+      `<div class="score-main"><div class="score-num clean">✓</div>
+        <div class="score-label"><b>No issues found</b><br>${layersRun} layer${layersRun === 1 ? "" : "s"} ran clean</div></div>` +
+      (langMeta || llmStat ? `<div class="score-meta">${langMeta}${langMeta && llmStat ? '<span class="sep">•</span>' : ""}${llmStat}</div>` : "");
+    resultsEl.innerHTML = `<div class="empty-state"><div class="clean-badge">✅</div>
+      <p class="big">No violations found.</p>
+      <p class="dim">${job.llm_available
+        ? "Clean across every layer that ran — deterministic checks and LLM semantic review."
+        : "Note: the LLM layer was offline — only the deterministic checks ran."}</p></div>`;
     return;
   }
+
+  const segs = present.map((s) =>
+    `<div class="sev-seg ${s}" style="flex:${bySev[s]}" title="${s}: ${bySev[s]}"></div>`).join("");
+  const legend = present.map((s) =>
+    `<span class="sev-chip ${s}">${s} <b>${bySev[s]}</b></span>`).join("");
+  summaryEl.innerHTML =
+    `<div class="score-main">
+       <div class="score-num">${vs.length}</div>
+       <div class="score-label"><b>issue${vs.length === 1 ? "" : "s"}</b> found<br>across ${layersRun} layer${layersRun === 1 ? "" : "s"}</div>
+     </div>
+     <div class="sev-bar">${segs}</div>
+     <div class="sev-legend">${legend}</div>
+     <button id="copy-btn" class="btn btn-copy">Copy report</button>` +
+    (langMeta || llmStat ? `<div class="score-meta">${langMeta}${langMeta && llmStat ? '<span class="sep">•</span>' : ""}${llmStat}</div>` : "");
 
   // group violations by their enclosing function (fall back to file scope)
   const groups = new Map();
@@ -337,6 +374,7 @@ function cardHTML(v) {
   }
   return `<div class="card sev-${v.severity}">
     <div class="card-head">
+      <span class="sev-tag ${v.severity}">${esc(v.severity)}</span>
       <span class="badge badge-${v.layer}">${v.layer}</span>
       <span class="rule">${esc(v.rule)}</span>
       <span class="line-link" data-line="${v.line}">line ${v.line}</span>
