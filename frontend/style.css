@@ -147,10 +147,15 @@ main { flex: 1; display: flex; min-height: 0; }
 
 /* ---------------- scorecard ---------------- */
 .scorecard {
-  display: flex; align-items: center; gap: 18px; padding: 14px 16px;
+  display: flex; align-items: center; gap: 18px; padding: 14px 16px; position: relative;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r);
   box-shadow: var(--shadow); flex-wrap: wrap; flex-shrink: 0;
 }
+.btn-export { padding: 5px 12px; font-size: 12px; color: var(--accent); border-color: rgba(79,142,247,.4); background: rgba(79,142,247,.06); }
+.btn-export:hover { background: rgba(79,142,247,.15); }
+.export-menu { position: absolute; right: 16px; top: calc(100% - 4px); background: var(--bg2); border: 1px solid var(--border2); border-radius: 8px; box-shadow: var(--shadow); z-index: 10; overflow: hidden; min-width: 165px; }
+.export-menu button { display: block; width: 100%; text-align: left; background: transparent; border: 0; color: var(--text); padding: 9px 14px; font-size: 13px; cursor: pointer; }
+.export-menu button:hover { background: var(--bg3); color: var(--accent); }
 .score-main { display: flex; align-items: center; gap: 12px; }
 .score-num { font-size: 34px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
 .score-num.clean { color: var(--green); }
@@ -238,8 +243,11 @@ main { flex: 1; display: flex; min-height: 0; }
 .badge-llm { background: rgba(63,185,80,.15); color: var(--green); }
 .badge-guideline { background: rgba(57,197,207,.15); color: var(--cyan); }
 .rule { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+.tool-badge { font-size: 10px; font-family: var(--mono); color: var(--dim2); border: 1px solid var(--border2); border-radius: 4px; padding: 1px 6px; }
 .line-link { margin-left: auto; color: var(--accent); cursor: pointer; font-size: 12px; font-family: var(--mono); padding: 2px 8px; border-radius: 5px; }
 .line-link:hover { background: rgba(79,142,247,.12); }
+.dismiss-btn { background: transparent; border: 0; color: var(--dim2); font-size: 11px; cursor: pointer; padding: 2px 8px; border-radius: 5px; }
+.dismiss-btn:hover { color: var(--red); background: rgba(248,81,73,.1); }
 .card .msg { margin: 8px 0 2px; line-height: 1.5; }
 .card .snippet {
   font-family: var(--mono); font-size: 12px; color: var(--dim);

@@ -113,6 +113,12 @@ document.addEventListener("keydown", (e) => {
   card.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 
+// close the export dropdown when clicking anywhere else
+document.addEventListener("click", () => {
+  const m = document.getElementById("export-menu");
+  if (m && !m.classList.contains("hidden")) m.classList.add("hidden");
+});
+
 /* ---------------- health pill ---------------- */
 async function refreshHealth() {
   const pill = $("llm-pill");
@@ -306,6 +312,11 @@ function renderResults(job) {
     ? `<span>LLM precision filter: <b>${job.stats.llm_raw_findings}</b> raw → <b>${vs.filter((v) => v.layer === "llm").length}</b> confirmed</span>`
     : "";
   const langMeta = job.language ? `<span>language <b>${esc(job.language)}</b></span>` : "";
+  const suppMeta = (job.stats && job.stats.suppressed)
+    ? `<span>🚫 <b>${job.stats.suppressed}</b> suppressed</span>` : "";
+  const metaParts = [langMeta, llmStat, suppMeta].filter(Boolean);
+  const metaHTML = metaParts.length
+    ? `<div class="score-meta">${metaParts.join('<span class="sep">•</span>')}</div>` : "";
   summaryEl.classList.remove("hidden");
 
   // editor gutter markers: worst severity per line + a hover summary
@@ -325,7 +336,7 @@ function renderResults(job) {
     summaryEl.innerHTML =
       `<div class="score-main"><div class="score-num clean">✓</div>
         <div class="score-label"><b>No issues found</b><br>${layersRun} layer${layersRun === 1 ? "" : "s"} ran clean</div></div>` +
-      (langMeta || llmStat ? `<div class="score-meta">${langMeta}${langMeta && llmStat ? '<span class="sep">•</span>' : ""}${llmStat}</div>` : "");
+      metaHTML;
     resultsEl.innerHTML = `<div class="empty-state"><div class="clean-badge">✅</div>
       <p class="big">No violations found.</p>
       <p class="dim">${job.llm_available
@@ -345,10 +356,23 @@ function renderResults(job) {
      </div>
      <div class="sev-bar">${segs}</div>
      <div class="sev-legend">${legend}</div>
-     <button id="copy-btn" class="btn btn-copy">Copy report</button>` +
-    (langMeta || llmStat ? `<div class="score-meta">${langMeta}${langMeta && llmStat ? '<span class="sep">•</span>' : ""}${llmStat}</div>` : "");
+     <button id="copy-btn" class="btn btn-copy">Copy report</button>
+     <button id="export-btn" class="btn btn-export">Export ▾</button>
+     <div id="export-menu" class="export-menu hidden">
+       <button data-export="md">Markdown (.md)</button>
+       <button data-export="sarif">SARIF (.sarif)</button>
+     </div>` +
+    metaHTML;
   const copyBtn = document.getElementById("copy-btn");
   if (copyBtn) copyBtn.addEventListener("click", () => copyViolations(job, copyBtn));
+  const exportBtn = document.getElementById("export-btn");
+  const exportMenu = document.getElementById("export-menu");
+  if (exportBtn) exportBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    exportMenu.classList.toggle("hidden");
+  });
+  if (exportMenu) exportMenu.querySelectorAll("[data-export]").forEach((b) =>
+    b.addEventListener("click", () => { exportReport(job, b.dataset.export); exportMenu.classList.add("hidden"); }));
 
   // fresh review resets any prior filter/sort state
   filterState.hidden.clear();
@@ -438,37 +462,106 @@ function renderFindings() {
     el.addEventListener("click", () => jumpToLine(parseInt(el.dataset.line, 10))));
   resultsEl.querySelectorAll("[data-apply]").forEach((el) =>
     el.addEventListener("click", () => applyFix(job, el.dataset.apply)));
+  resultsEl.querySelectorAll("[data-dismiss]").forEach((el) =>
+    el.addEventListener("click", () => dismissFinding(job, el.dataset.dismiss)));
+}
+
+/* mark a finding as a false positive: drop a koosys:ignore marker on its line
+   (so it stays suppressed on every future review) and re-run the review */
+const COMMENT_TOKEN = { py: "#", c: "//", cpp: "//", java: "//", ts: "//", js: "//" };
+function dismissFinding(job, vid) {
+  const v = job.violations.find((x) => x.id === vid);
+  if (!v) return;
+  const cmt = COMMENT_TOKEN[$("language").value] || "#";
+  const lines = codeEl.value.split("\n");
+  const idx = v.line - 1;
+  if (idx < 0 || idx >= lines.length) return;
+  const existing = lines[idx].match(/koosys:ignore(\[([^\]]*)\])?/i);
+  if (!existing) {
+    lines[idx] = lines[idx].replace(/\s*$/, "") + `  ${cmt} koosys:ignore[${v.rule}]`;
+  } else if (existing[1] !== undefined) {          // has a [rule,list] — add ours
+    const rules = existing[2].split(",").map((s) => s.trim()).filter(Boolean);
+    if (!rules.includes(v.rule)) {
+      rules.push(v.rule);
+      lines[idx] = lines[idx].replace(/koosys:ignore\[[^\]]*\]/i, `koosys:ignore[${rules.join(",")}]`);
+    }
+  }                                                // bare marker already covers it
+  codeEl.value = lines.join("\n");
+  findingLines.clear();
+  renderGutter();
+  reviewBtn.click();                               // re-review so counts/markers update
+}
+
+/* ---------------- report export (Markdown / SARIF) ---------------- */
+function reportMarkdown(job) {
+  const vs = job.violations;
+  const bySev = {};
+  vs.forEach((v) => { bySev[v.severity] = (bySev[v.severity] || 0) + 1; });
+  const sevLine = ["critical", "high", "medium", "low", "info"]
+    .filter((s) => bySev[s]).map((s) => `${s} ${bySev[s]}`).join(" · ");
+  const out = [`# Code review — ${job.filename || "snippet"} (${job.language || ""})`, "",
+    `**${vs.length} issue${vs.length === 1 ? "" : "s"}**${sevLine ? " — " + sevLine : ""} · engine: cd-koosys`, ""];
+  const groups = new Map();
+  vs.forEach((v) => { const k = v.function || "(file scope)"; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(v); });
+  [...groups.entries()].sort((a, b) => a[1][0].line - b[1][0].line).forEach(([fn, items]) => {
+    out.push(`## ${fn === "(file scope)" ? "(file scope)" : fn + "()"}`, "");
+    items.forEach((v) => {
+      out.push(`- **[${v.severity}]** \`${v.rule}\`${v.tool ? ` _(${v.tool})_` : ""} — L${v.line}: ${v.message}`);
+      if (v.citation && v.citation.quote)
+        out.push(`  - cites ${v.citation.source || "guideline"}${v.citation.page ? ` p${v.citation.page}` : ""}: "${v.citation.quote}"`);
+      if (v.fix && v.fix.validated)
+        out.push(`  - fix${v.fix.start_line && v.fix.start_line !== v.line ? ` (L${v.fix.start_line})` : ""}: \`${v.fix.replacement.replace(/\n/g, " ⏎ ")}\``);
+      else if (v.suggestion) out.push(`  - manual: ${v.suggestion}`);
+    });
+    out.push("");
+  });
+  return out.join("\n");
+}
+
+function reportSarif(job) {
+  const level = (s) => (s === "critical" || s === "high") ? "error" : (s === "medium" ? "warning" : "note");
+  const rules = new Map();
+  const results = job.violations.map((v) => {
+    if (!rules.has(v.rule)) rules.set(v.rule,
+      { id: v.rule, name: v.rule, shortDescription: { text: v.rule },
+        properties: { layer: v.layer, tool: v.tool || "" } });
+    const msg = v.message + (v.citation && v.citation.quote
+      ? ` [cites ${v.citation.source || "guideline"}: ${v.citation.quote}]` : "");
+    return {
+      ruleId: v.rule, level: level(v.severity), message: { text: msg },
+      locations: [{ physicalLocation: {
+        artifactLocation: { uri: job.filename || "snippet" },
+        region: { startLine: v.line, snippet: { text: v.snippet || "" } } } }],
+      properties: { severity: v.severity, layer: v.layer, tool: v.tool || "",
+        fix: (v.fix && v.fix.validated) ? v.fix.replacement : undefined },
+    };
+  });
+  return JSON.stringify({
+    version: "2.1.0",
+    $schema: "https://json.schemastore.org/sarif-2.1.0.json",
+    runs: [{ tool: { driver: {
+      name: "cd-koosys", informationUri: "https://github.com/VManoj2k3/cd-ksys",
+      version: "1.0", rules: [...rules.values()] } }, results }],
+  }, null, 2);
+}
+
+function downloadFile(name, text, mime) {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportReport(job, kind) {
+  const base = (job.filename || "review").replace(/\.[^.]*$/, "");
+  if (kind === "sarif") downloadFile(base + ".sarif", reportSarif(job), "application/json");
+  else downloadFile(base + ".koosys.md", reportMarkdown(job), "text/markdown");
 }
 
 function copyViolations(job, btn) {
-  const vs = job.violations;
-  const groups = new Map();
-  vs.forEach((v) => {
-    const key = v.function || "(file scope)";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(v);
-  });
-  const ordered = [...groups.entries()].sort((a, b) => a[1][0].line - b[1][0].line);
-  const lines = [`Code review — ${job.filename || ""} (${job.language || ""})`,
-                 `${vs.length} violation(s)`, ""];
-  ordered.forEach(([fn, items]) => {
-    lines.push(fn === "(file scope)" ? "## (file scope)" : `## ${fn}()`);
-    items.forEach((v) => {
-      lines.push(`  L${v.line} [${v.layer}/${v.rule}] ${v.severity}: ${v.message}`);
-      if (v.fix && v.fix.validated) {
-        const at = v.fix.start_line && v.fix.start_line !== v.line
-          ? ` (line ${v.fix.start_line})` : "";
-        lines.push(`      fix${at}: ${v.fix.replacement.replace(/\n/g, " ")}`);
-      } else if (v.suggestion || v.message) {
-        lines.push(`      manual: ${v.suggestion || v.message}`);
-      }
-    });
-    lines.push("");
-  });
-  const text = lines.join("\n");
-  navigator.clipboard.writeText(text).then(() => {
+  navigator.clipboard.writeText(reportMarkdown(job)).then(() => {
     btn.textContent = "Copied ✓";
-    setTimeout(() => { btn.textContent = "Copy all"; }, 2000);
+    setTimeout(() => { btn.textContent = "Copy report"; }, 2000);
   }).catch(() => { btn.textContent = "Copy failed"; });
 }
 
@@ -518,7 +611,9 @@ function cardHTML(v) {
       <span class="sev-tag ${v.severity}">${esc(v.severity)}</span>
       <span class="badge badge-${v.layer}">${v.layer}</span>
       <span class="rule">${esc(v.rule)}</span>
+      ${v.tool ? `<span class="tool-badge" title="Flagged by ${esc(v.tool)}">${esc(v.tool)}</span>` : ""}
       <span class="line-link" data-line="${v.line}">line ${v.line}</span>
+      <button class="dismiss-btn" data-dismiss="${v.id}" title="Mark as false positive — inserts koosys:ignore on this line and re-reviews">✕ dismiss</button>
     </div>
     <div class="msg">${esc(v.message)}</div>
     <div class="snippet">${esc(v.snippet)}</div>

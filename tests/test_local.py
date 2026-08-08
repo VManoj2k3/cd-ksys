@@ -48,7 +48,6 @@ def main() -> int:
 
     print("== sample_bad.py — planted violations must be found ==")
     spell = _spell(bad)
-    rules = [(v.rule, v.line) for v in spell]
     print(f"  spell found: {[(v.rule, v.line, v.message[:50]) for v in spell]}")
     check(any(v.rule == "spell-identifier" and "recieve" in v.message for v in spell),
           "spell: misspelled identifier 'recieve_data' detected")
@@ -85,6 +84,32 @@ def main() -> int:
     for v in fp:
         print(f"  UNEXPECTED: L{v.line} [{v.layer.value}/{v.rule}] {v.message}")
     check(not fp, f"clean sample produced {len(fp)} violations (expected 0)")
+
+    print("\n== inline suppression (koosys:ignore) + tool provenance ==")
+    from backend.models import Layer, Severity, Violation
+    from backend.orchestrator import _apply_suppressions, _TOOL_BY_PREFIX
+
+    def _v(line, rule, vid):
+        return Violation(id=vid, layer=Layer.LINT, rule=rule, severity=Severity.LOW,
+                         line=line, message=rule)
+    src = "\n".join([
+        "import os, sys                 # koosys:ignore[E401]",   # 1: rule-scoped
+        "x = eval(inp)                  # koosys:ignore",          # 2: bare (all)
+        "y == None",                                              # 3: unmarked
+    ])
+    kept, dropped = _apply_suppressions(src, [
+        _v(1, "E401", "ruff-1"), _v(1, "F401", "ruff-2"),
+        _v(2, "B307", "bandit-1"), _v(3, "E711", "ruff-3")])
+    kr = {v.rule for v in kept}
+    check("E401" not in kr, "koosys:ignore[E401] suppresses E401")
+    check("F401" in kr, "a rule-scoped marker does NOT suppress other rules on the line")
+    check("B307" not in kr, "a bare koosys:ignore suppresses every finding on its line")
+    check("E711" in kr, "an unmarked line keeps its finding")
+    check(dropped == 2, f"exactly two findings suppressed ({dropped})")
+    check(_TOOL_BY_PREFIX.get("ruff") == "Ruff"
+          and _TOOL_BY_PREFIX.get("bandit") == "Bandit"
+          and _TOOL_BY_PREFIX.get("guideline") == "LLM + RAG",
+          "tool provenance map resolves ruff / bandit / guideline")
 
     print(f"\n{'ALL CHECKS PASSED' if not FAILURES else f'{len(FAILURES)} FAILURES'}")
     return 1 if FAILURES else 0

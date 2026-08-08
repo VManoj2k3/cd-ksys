@@ -54,6 +54,7 @@ class Violation(BaseModel):
     snippet: str = ""
     message: str
     suggestion: str = ""
+    tool: str = ""       # which engine produced it (codespell/ruff/bandit/LLM/…)
     function: str = ""   # enclosing function/method name, for UI grouping
     fix: Optional[Fix] = None
     # provenance for trust: deterministic layers are marked verified by construction

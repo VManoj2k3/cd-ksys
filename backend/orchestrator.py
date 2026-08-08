@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 
 from backend.app_config import CFG
 from backend.detect import generated_marker as _looks_generated
@@ -141,6 +142,52 @@ def _dedup(deterministic: list[Violation], llm: list[Violation]) -> list[Violati
     return kept
 
 
+# which engine produced a finding, keyed by its violation-id prefix — shown as
+# a provenance badge in the UI (named tools read as trustworthy)
+_TOOL_BY_PREFIX = {
+    "spell": "codespell", "ruff": "Ruff", "bandit": "Bandit",
+    "cppcheck": "cppcheck", "tidy": "clang-tidy", "flawfinder": "Flawfinder",
+    "eslint": "ESLint", "tsc": "tsc", "jast": "javalang", "pmd": "PMD",
+    "magic": "koosys", "hardcode": "koosys", "llm": "LLM", "guideline": "LLM + RAG",
+}
+
+# inline suppression: a `koosys:ignore` marker in a comment silences findings on
+# that line (bare = all; `koosys:ignore[E401,spell-comment]` = only those rules).
+# The marker is honored on the finding's own line or a comment line just above.
+_IGNORE_RE = re.compile(r"koosys:ignore(?:\[([^\]]*)\])?", re.IGNORECASE)
+_COMMENT_STARTS = ("#", "//", "/*", "*")
+
+
+def _apply_suppressions(code: str, violations: list[Violation]) -> tuple[list[Violation], int]:
+    lines = code.splitlines()
+
+    def at(n: int) -> str:
+        return lines[n - 1] if 1 <= n <= len(lines) else ""
+
+    kept: list[Violation] = []
+    dropped = 0
+    for v in violations:
+        cands = [at(v.line)]
+        prev = at(v.line - 1)
+        if prev.lstrip().startswith(_COMMENT_STARTS):
+            cands.append(prev)
+        m = next((mm for c in cands for mm in [_IGNORE_RE.search(c)] if mm), None)
+        if m is None:
+            kept.append(v)
+            continue
+        spec = (m.group(1) or "").strip()
+        if not spec:
+            dropped += 1                      # bare marker → suppress everything here
+            continue
+        wanted = {r.strip().lower() for r in spec.split(",") if r.strip()}
+        if (v.rule.lower() in wanted or v.layer.value.lower() in wanted
+                or (v.tool or "").lower() in wanted):
+            dropped += 1
+            continue
+        kept.append(v)
+    return kept, dropped
+
+
 async def run_review(job: ReviewJob) -> None:
     code, filename = job.code, job.filename
     job.state = "running"
@@ -278,6 +325,17 @@ async def run_review(job: ReviewJob) -> None:
 
     violations = sorted([*deterministic, *llm_v, *guideline_v],
                         key=lambda v: (v.line, v.layer.value))
+
+    # tag each finding with the engine that produced it (from its id prefix) so
+    # the UI can show provenance — named tools read as trustworthy
+    for v in violations:
+        if not v.tool:
+            v.tool = _TOOL_BY_PREFIX.get((v.id or "").split("-", 1)[0], "")
+
+    # honor inline `koosys:ignore` suppressions (dismissed false positives)
+    violations, suppressed = _apply_suppressions(code, violations)
+    if suppressed:
+        stats["suppressed"] = suppressed
 
     # tag each violation with its enclosing function so the UI can group them
     try:
