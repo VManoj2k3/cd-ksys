@@ -85,6 +85,11 @@ def main() -> None:
     overlay.write_text(
         "server:\n"
         "  host: 127.0.0.1\n"
+        # acceptance submits many reviews back to back (accuracy_eval + the
+        # multi-language RAG smoke); lift the per-user cap so the eval itself is
+        # never throttled (production keeps the conservative default)
+        "  reviews_per_user_per_minute: 240\n"
+        "  max_active_jobs: 60\n"
         "logging:\n"
         "  level: info\n"
         "kaggle:\n"

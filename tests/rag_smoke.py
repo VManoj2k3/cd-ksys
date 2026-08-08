@@ -3,12 +3,12 @@
     python -m tests.rag_smoke
 
 Runs in-process on the same box as a running backend (same config/data_dir).
-Ingests TWO real guideline PDFs (a Secure-C standard, 2 pages, and a Python
-guidelines doc) through the real pypdf path, then drives the live HTTP review
-API — RAG toggle on — across the full scenario matrix and reports what the REAL
-model does: violations detected + cited to the right PDF/rule/page, compliant
-code staying silent, cross-collection attribution, retrieval faithfulness, and
-inline fixes. This is the Phase-2 analogue of tests/accuracy_eval.py.
+Ingests one real guideline PDF per language (Python, C, C++, Java, TypeScript)
+through the real pypdf path, then drives the live HTTP review API — RAG toggle
+on — across a scenario matrix and reports what the REAL model does: violations
+detected + cited to the right PDF/rule/page, compliant code staying silent,
+cross-collection attribution, retrieval faithfulness, and inline fixes. The
+Phase-2 analogue of tests/accuracy_eval.py, across ALL FIVE languages.
 
 Retrieval uses whatever rag.embedder the stack is configured with (default
 'hash' — the out-of-box pilot config). Env: KOOSYS_URL (default :8000).
@@ -66,37 +66,92 @@ def make_pdf(pages: list[str]) -> bytes:
     return bytes(out) + b"%%EOF"
 
 
-C_PDF = make_pdf([
-    "ACME Secure C Coding Standard v1.2\n"
-    "Rule SEC-01: The gets function must never be used because it cannot bound "
-    "its input and leads to buffer overflows. Use fgets with an explicit size.\n"
-    "Rule SEC-02: Do not use strcpy or strcat. Prefer strncpy or snprintf with "
-    "an explicit size bound.",
-    "Rule MEM-03: Every pointer returned by malloc must be checked against NULL "
-    "before it is dereferenced.\n"
-    "Rule CTRL-04: The goto statement is forbidden. Use structured control flow "
-    "such as loops and helper functions instead.",
-])
-PY_PDF = make_pdf([
-    "ACME Python Engineering Guidelines\n"
-    "Rule PYLOG-01: Do not use print in library modules. Use the logging module "
-    "so that output can be controlled and routed.\n"
-    "Rule PYSEC-02: Never call eval or exec on external or untrusted input; it "
-    "enables code injection.\n"
-    "Rule PYDOC-03: Every TODO comment must reference a tracking ticket, for "
-    "example TODO PROJ-123.",
-])
+# one guideline PDF per language (the C one is two pages -> page-2 citation)
+PDFS = {
+    "c": ("ACME_Secure_C_Standard.pdf", make_pdf([
+        "ACME Secure C Coding Standard v1.2\n"
+        "Rule SEC-01: The gets function must never be used because it cannot "
+        "bound its input and leads to buffer overflows. Use fgets with a size.\n"
+        "Rule SEC-02: Do not use strcpy or strcat. Prefer strncpy or snprintf "
+        "with an explicit size bound.",
+        "Rule MEM-03: Every pointer returned by malloc must be checked against "
+        "NULL before it is dereferenced.\n"
+        "Rule CTRL-04: The goto statement is forbidden. Use structured control "
+        "flow such as loops and helper functions instead."])),
+    "py": ("ACME_Python_Guidelines.pdf", make_pdf([
+        "ACME Python Engineering Guidelines\n"
+        "Rule PYLOG-01: Do not use print in library modules. Use the logging "
+        "module so that output can be controlled and routed.\n"
+        "Rule PYSEC-02: Never call eval or exec on external or untrusted input; "
+        "it enables code injection.\n"
+        "Rule PYDOC-03: Every TODO comment must reference a tracking ticket, "
+        "for example TODO PROJ-123."])),
+    "java": ("ACME_Java_Guidelines.pdf", make_pdf([
+        "ACME Java Engineering Guidelines\n"
+        "Rule JAVA-01: Do not call System.out.println in production code. Route "
+        "output through a logging framework such as SLF4J.\n"
+        "Rule JAVA-02: Never catch the generic Exception type; catch the "
+        "specific exceptions you can actually handle.\n"
+        "Rule JAVA-03: Do not compare strings with the == operator; use the "
+        "equals method instead."])),
+    "ts": ("ACME_TypeScript_Guidelines.pdf", make_pdf([
+        "ACME TypeScript Engineering Guidelines\n"
+        "Rule TS-01: Do not use the any type. Declare precise types so the "
+        "compiler can check them.\n"
+        "Rule TS-02: Always use strict equality (===) and never the loose == "
+        "operator.\n"
+        "Rule TS-03: Do not leave console.log calls in committed code; use the "
+        "project logger."])),
+    "cpp": ("ACME_Cpp_Guidelines.pdf", make_pdf([
+        "ACME C++ Engineering Guidelines\n"
+        "Rule CPP-01: Do not put using namespace std at global or namespace "
+        "scope in headers or shared code.\n"
+        "Rule CPP-02: Use nullptr for null pointers, never NULL or the literal "
+        "0.\n"
+        "Rule CPP-03: Do not manage memory with raw new and delete; use smart "
+        "pointers such as std::make_unique."])),
+}
 
-C_BAD = ('#include <stdio.h>\nint main(void){\n  char buf[64];\n'
-         '  gets(buf);\n  char d[8];\n  strcpy(d, buf);\n  return 0;\n}\n')
-C_CLEAN = ('#include <stdio.h>\nint main(void){\n  char buf[64];\n'
-           '  fgets(buf, sizeof(buf), stdin);\n  return 0;\n}\n')
-C_GOTO = 'int f(int x){\n  if(x)\n    goto end;\n  end:\n  return x;\n}\n'
-PY_BAD = ('def run(cmd):\n    print("running")\n    return eval(cmd)\n'
-          '# TODO: harden this later\n')
-PY_CLEAN = ('import logging\nlog = logging.getLogger(__name__)\n'
-            'def run(cmd):\n    log.info("running")\n'
-            '    # TODO(PROJ-123): support dry-run\n    return 0\n')
+# violating + compliant code per language
+CODE = {
+    "c": (
+        '#include <stdio.h>\nint main(void){\n  char buf[64];\n'
+        '  gets(buf);\n  char d[8];\n  strcpy(d, buf);\n  return 0;\n}\n',
+        '#include <stdio.h>\nint main(void){\n  char buf[64];\n'
+        '  fgets(buf, sizeof(buf), stdin);\n  return 0;\n}\n'),
+    "py": (
+        'def run(cmd):\n    print("running")\n    return eval(cmd)\n'
+        '# TODO: harden this later\n',
+        'import logging\nlog = logging.getLogger(__name__)\n'
+        'def run(cmd):\n    log.info("running")\n'
+        '    # TODO(PROJ-123): support dry-run\n    return 0\n'),
+    "java": (
+        'public class Svc {\n  String check(String a, String b) {\n'
+        '    System.out.println("checking");\n'
+        '    if (a == b) { return "same"; }\n'
+        '    try { return a.trim(); } catch (Exception e) { return ""; }\n'
+        '  }\n}\n',
+        'import org.slf4j.Logger;\nimport org.slf4j.LoggerFactory;\n'
+        'public class Svc {\n'
+        '  private static final Logger log = LoggerFactory.getLogger(Svc.class);\n'
+        '  String check(String a, String b) {\n    log.info("checking");\n'
+        '    if (a.equals(b)) { return "same"; }\n'
+        '    try { return a.trim(); } catch (NullPointerException e) { return ""; }\n'
+        '  }\n}\n'),
+    "ts": (
+        'function parse(input: any): number {\n  console.log(input);\n'
+        '  if (input == null) { return 0; }\n  return input.length;\n}\n',
+        'function parse(input: string | null): number {\n'
+        '  if (input === null) { return 0; }\n  return input.length;\n}\n'),
+    "cpp": (
+        '#include <cstddef>\nusing namespace std;\n'
+        'int* make() {\n  int* p = new int(5);\n'
+        '  if (p == NULL) { return NULL; }\n  return p;\n}\n',
+        '#include <memory>\n'
+        'std::unique_ptr<int> make() {\n'
+        '  auto p = std::make_unique<int>(5);\n'
+        '  if (p == nullptr) { return nullptr; }\n  return p;\n}\n'),
+}
 
 
 def review(client, code, lang, cids):
@@ -122,9 +177,9 @@ def show(gv):
         cite = v.get("citation") or {}
         fix = v.get("fix") or {}
         tag = " +fix" if fix.get("validated") else ""
-        print(f"    L{v['line']} [{v['severity']}] {v['message'][:80]}{tag}")
+        print(f"    L{v['line']} [{v['severity']}] {v['message'][:76]}{tag}")
         print(f"       cites p{cite.get('page')} of {cite.get('source')}: "
-              f"{(cite.get('quote') or '')[:70]}")
+              f"{(cite.get('quote') or '')[:64]}")
 
 
 def main() -> None:
@@ -137,24 +192,32 @@ def main() -> None:
         print("LLM offline — guideline layer needs the model")
         sys.exit(2)
 
-    c_cid = store.create_collection(USER, "Secure C Standard")["id"]
-    py_cid = store.create_collection(USER, "Python Guidelines")["id"]
-    nc = ingest.ingest_pdf(USER, c_cid, "ACME_Secure_C_Standard.pdf", C_PDF)
-    npy = ingest.ingest_pdf(USER, py_cid, "ACME_Python_Guidelines.pdf", PY_PDF)
-    print(f"ingested 2 real PDFs -> C:{nc} chunk(s), Python:{npy} chunk(s)\n")
+    cid: dict[str, str] = {}
+    src: dict[str, str] = {}
+    for lang, (name, blob) in PDFS.items():
+        c = store.create_collection(USER, f"{lang} guidelines")["id"]
+        n = ingest.ingest_pdf(USER, c, name, blob)
+        cid[lang], src[lang] = c, name
+        print(f"ingested {name} -> {n} chunk(s)")
+    print()
 
-    client = httpx.Client(timeout=90)
-    # (label, code, lang, collections, expectation)  expectation: source PDF the
-    # findings should cite, or None for "must stay silent"
-    C_SRC, PY_SRC = "ACME_Secure_C_Standard.pdf", "ACME_Python_Guidelines.pdf"
+    client = httpx.Client(timeout=120)
+    # (label, code, lang, collections, expected source PDF | None for SILENT)
     scenarios = [
-        ("S1 C gets+strcpy", C_BAD, "c", [c_cid], C_SRC),
-        ("S2 C compliant", C_CLEAN, "c", [c_cid], None),
-        ("S3 C goto (page-2 rule)", C_GOTO, "c", [c_cid], C_SRC),
-        ("S4 Py eval+print+TODO", PY_BAD, "py", [py_cid], PY_SRC),
-        ("S5 Py compliant", PY_CLEAN, "py", [py_cid], None),
-        ("S6 both selected, C bad", C_BAD, "c", [c_cid, py_cid], C_SRC),
-        ("S7 C bad, only Py PDF", C_BAD, "c", [py_cid], None),
+        ("S1  C   gets+strcpy", CODE["c"][0], "c", [cid["c"]], src["c"]),
+        ("S2  C   compliant", CODE["c"][1], "c", [cid["c"]], None),
+        ("S4  Py  eval+print+TODO", CODE["py"][0], "py", [cid["py"]], src["py"]),
+        ("S5  Py  compliant", CODE["py"][1], "py", [cid["py"]], None),
+        ("S8  Java println+==+catch", CODE["java"][0], "java", [cid["java"]], src["java"]),
+        ("S9  Java compliant", CODE["java"][1], "java", [cid["java"]], None),
+        ("S10 TS  any+console+==", CODE["ts"][0], "ts", [cid["ts"]], src["ts"]),
+        ("S11 TS  compliant", CODE["ts"][1], "ts", [cid["ts"]], None),
+        ("S12 C++ using-std+new+NULL", CODE["cpp"][0], "cpp", [cid["cpp"]], src["cpp"]),
+        ("S13 C++ compliant", CODE["cpp"][1], "cpp", [cid["cpp"]], None),
+        # cross-cutting checks (attribution / faithfulness / mixed selection)
+        ("S6  both C+Py, C bug", CODE["c"][0], "c", [cid["c"], cid["py"]], src["c"]),
+        ("S7  C bug, only Py PDF", CODE["c"][0], "c", [cid["py"]], None),
+        ("S14 all 5 selected, TS bug", CODE["ts"][0], "ts", list(cid.values()), src["ts"]),
     ]
 
     detected = expected_hits = fp = cite_ok = cite_tot = fixes = 0
@@ -183,16 +246,15 @@ def main() -> None:
                     fixes += 1
         print()
 
-    for cid in (c_cid, py_cid):
-        store.delete_collection(USER, cid)
+    for c in cid.values():
+        store.delete_collection(USER, c)
 
     print("=" * 60)
-    print(f"violations detected:      {detected}/{expected_hits} scenarios")
+    print("languages covered:        Python, C, C++, Java, TypeScript")
+    print(f"violations detected:      {detected}/{expected_hits} violating scenarios")
     print(f"citations to correct PDF: {cite_ok}/{cite_tot} findings")
     print(f"false positives (clean/wrong-collection): {fp}  (want 0)")
     print(f"validated inline fixes on findings: {fixes}")
-    # PASS = every clearly-violating scenario produced at least one finding, no
-    # FP on compliant/irrelevant code, and citations point to the right PDF.
     ok = (detected == expected_hits and fp == 0
           and cite_tot > 0 and cite_ok == cite_tot)
     print("\nRAG SMOKE:", "PASS" if ok else
