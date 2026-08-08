@@ -41,8 +41,8 @@
       <label class="rag-toggle" title="Also check the code against your uploaded coding guidelines">
         <input type="checkbox" id="rag-toggle"> <span>Check against guidelines (RAG)</span>
       </label>
-      <select id="rag-collections" multiple size="1" class="rag-collections hidden"
-              aria-label="Guideline collections"></select>
+      <div id="rag-collections" class="rag-collections hidden" role="group"
+           aria-label="Guideline collections to check against"></div>
       <span id="rag-hint" class="dim hidden">No collections yet —
         <a href="/collections">upload guidelines</a>.</span>
     </div>

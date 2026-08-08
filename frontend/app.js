@@ -63,9 +63,12 @@ setInterval(refreshHealth, 15000);
 /* ---------------- RAG: guideline collections ---------------- */
 const ragToggle = $("rag-toggle"), ragBar = $("rag-bar");
 const ragCollections = $("rag-collections"), ragHint = $("rag-hint");
+function collectionCount() {
+  return ragCollections ? ragCollections.querySelectorAll("input[type=checkbox]").length : 0;
+}
 function selectedCollections() {
   if (!ragToggle || !ragToggle.checked || !ragCollections) return [];
-  return Array.from(ragCollections.selectedOptions).map((o) => o.value);
+  return Array.from(ragCollections.querySelectorAll("input:checked")).map((i) => i.value);
 }
 async function initRag() {
   try {
@@ -74,17 +77,18 @@ async function initRag() {
     ragBar.classList.remove("hidden");
     const { collections } = await (await fetch("/api/collections")).json();
     if (!collections || !collections.length) { ragHint.classList.remove("hidden"); return; }
-    ragCollections.innerHTML = collections
-      .map((c) => `<option value="${esc(c.id)}">${esc(c.name)} (${c.chunks} rules)</option>`)
-      .join("");
+    // one checkbox chip per collection — check several to review against them
+    // all at once (all selected by default). Clearer than a ctrl-click select.
+    ragCollections.innerHTML = collections.map((c) =>
+      `<label class="coll-check"><input type="checkbox" value="${esc(c.id)}" checked>
+        ${esc(c.name)} <span class="dim">${c.chunks}</span></label>`).join("");
   } catch { /* RAG optional — never block the review page */ }
 }
 if (ragToggle) {
   ragToggle.addEventListener("change", () => {
-    const on = ragToggle.checked && ragCollections.options.length > 0;
+    const on = ragToggle.checked && collectionCount() > 0;
     ragCollections.classList.toggle("hidden", !on);
-    ragCollections.size = on ? Math.min(4, ragCollections.options.length) : 1;
-    if (ragToggle.checked && ragCollections.options.length === 0) ragHint.classList.remove("hidden");
+    if (ragToggle.checked && collectionCount() === 0) ragHint.classList.remove("hidden");
   });
   initRag();
 }
