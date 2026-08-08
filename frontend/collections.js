@@ -51,8 +51,8 @@ async function load() {
       <div class="coll-stats dim">${c.chunks} rules indexed · ${(c.docs || []).length} document(s)</div>
       <div class="coll-docs">${(c.docs || []).map((d) => `<span class="doc-chip">${esc(d)}</span>`).join("") || '<span class="dim">no documents yet</span>'}</div>
       <div class="coll-upload">
-        <label class="btn btn-ghost" for="up-${esc(c.id)}">Upload PDF</label>
-        <input id="up-${esc(c.id)}" type="file" accept=".pdf" hidden data-up="${esc(c.id)}">
+        <label class="btn btn-ghost" for="up-${esc(c.id)}">Upload PDFs</label>
+        <input id="up-${esc(c.id)}" type="file" accept=".pdf" multiple hidden data-up="${esc(c.id)}">
         <span class="up-status dim" id="ups-${esc(c.id)}"></span>
       </div>
     </div>`).join("");
@@ -87,19 +87,30 @@ async function del(id) {
 }
 
 async function upload(id, input) {
-  const f = input.files[0];
-  if (!f) return;
+  const files = Array.from(input.files || []);
+  input.value = "";                       // reset early so re-selecting works
+  if (!files.length) return;
   const st = $(`ups-${id}`);
-  st.textContent = `Indexing ${f.name}…`;
-  const fd = new FormData(); fd.append("file", f);
-  try {
-    const r = await fetch(`/api/collections/${id}/upload`, { method: "POST", body: fd });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) { st.textContent = ""; msg(j.detail || "Upload failed", "err"); return; }
-    st.textContent = `Indexed ${j.chunks} rules from ${esc(f.name)}.`;
-    load();
-  } catch { st.textContent = ""; msg("Upload failed — is the server reachable?", "err"); }
-  finally { input.value = ""; }
+  let done = 0, rules = 0;
+  const errors = [];
+  // one PDF per request, sequentially — clear per-file progress and a partial
+  // failure never loses the documents that already indexed
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    st.textContent = files.length > 1
+      ? `Indexing ${i + 1}/${files.length}: ${f.name}…` : `Indexing ${f.name}…`;
+    const fd = new FormData(); fd.append("file", f);
+    try {
+      const r = await fetch(`/api/collections/${id}/upload`, { method: "POST", body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { errors.push(`${f.name}: ${j.detail || "failed"}`); continue; }
+      done++; rules += (j.chunks || 0);
+    } catch { errors.push(`${f.name}: server unreachable`); }
+  }
+  st.textContent = done ? `Indexed ${rules} rules from ${done} document${done === 1 ? "" : "s"}.` : "";
+  if (errors.length) msg(errors.join(" · "), "err");
+  else if (done) msg(`Added ${done} document${done === 1 ? "" : "s"} to the collection.`, "ok");
+  load();
 }
 
 $("create-btn").addEventListener("click", create);

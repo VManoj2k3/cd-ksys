@@ -93,6 +93,24 @@ check(bool(hits) and "eval" in hits[0]["text"].lower(),
 check(store.search("bob", [c["id"]], qv, 3) == [],
       "bob cannot retrieve from alice's collection")
 
+print("== store: MULTIPLE documents in one collection ==")
+multi = store.create_collection("alice", "Company Standards")["id"]
+ingest.ingest_document("alice", multi, "security.pdf",
+                       [(1, "Rule SEC: never call eval on untrusted input.")])
+ingest.ingest_document("alice", multi, "style.pdf",
+                       [(1, "Rule STY: use the logging module, not print, in libraries.")])
+mmeta = store.get_collection("alice", multi)
+check(sorted(mmeta["docs"]) == ["security.pdf", "style.pdf"],
+      f"one collection tracks both documents ({mmeta['docs']})")
+check(mmeta["chunks"] == 2, f"chunk count spans both docs ({mmeta['chunks']})")
+h1 = store.search("alice", [multi], get_embedder().embed_one("eval untrusted injection"), 1)
+h2 = store.search("alice", [multi], get_embedder().embed_one("logging print library"), 1)
+check(bool(h1) and h1[0]["source"] == "security.pdf",
+      "a query retrieves from the right PDF and cites security.pdf")
+check(bool(h2) and h2[0]["source"] == "style.pdf",
+      "another query cites style.pdf — both docs searchable in one collection")
+store.delete_collection("alice", multi)
+
 fake = FakeLLM(_PORT)
 fake.start()
 try:
