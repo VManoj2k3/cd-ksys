@@ -35,7 +35,8 @@
       <input id="filename" type="text" value="snippet.py" spellcheck="false" aria-label="Filename">
       <label class="btn btn-ghost" for="file-input">Upload</label>
       <input id="file-input" type="file" accept=".py,.c,.h,.cpp,.cc,.cxx,.hpp,.hh,.java,.ts,.tsx,.js,.jsx,.mjs" hidden>
-      <button id="review-btn" class="btn btn-primary">Review code</button>
+      <button id="example-btn" class="btn btn-ghost" title="Load a sample with planted issues">Try an example</button>
+      <button id="review-btn" class="btn btn-primary" title="Run review (Ctrl/⌘+Enter)">Review code</button>
     </div>
     <div id="rag-bar" class="rag-bar hidden">
       <label class="rag-toggle" title="Also check the code against your uploaded coding guidelines">
@@ -55,6 +56,7 @@
   <section class="results-pane">
     <div id="layers" class="pipeline hidden"></div>
     <div id="summary" class="scorecard hidden"></div>
+    <div id="filterbar" class="filterbar hidden"></div>
     <div id="results" class="results">
       <div class="empty-state">
         <div class="clean-badge">🛡️</div>

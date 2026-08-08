@@ -4,22 +4,45 @@
 const $ = (id) => document.getElementById(id);
 const codeEl = $("code"), gutterEl = $("gutter"), resultsEl = $("results");
 const layersEl = $("layers"), summaryEl = $("summary"), reviewBtn = $("review-btn");
+const filterbarEl = $("filterbar");
 
 const POLL_MS = 1000;
 let pollTimer = null;
+
+const SEV_RANK = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
+let currentJob = null;
+let findingLines = new Map();                 // reviewed line -> {sev, title}
+const filterState = { hidden: new Set(), fixableOnly: false, sort: "location" };
 
 /* ---------------- editor gutter ---------------- */
 function renderGutter(highlight = 0) {
   const n = codeEl.value.split("\n").length;
   let html = "";
   for (let i = 1; i <= n; i++) {
-    html += i === highlight ? `<span class="hl">${i}</span>\n` : i + "\n";
+    if (i === highlight) { html += `<span class="hl">${i}</span>\n`; continue; }
+    const f = findingLines.get(i);
+    html += f
+      ? `<span class="mark mark-${f.sev}" data-goto="${i}" title="${esc(f.title)}">${i}</span>\n`
+      : i + "\n";
   }
   gutterEl.innerHTML = html;
 }
-codeEl.addEventListener("input", () => renderGutter());
+codeEl.addEventListener("input", () => { if (findingLines.size) findingLines.clear(); renderGutter(); });
 codeEl.addEventListener("scroll", () => { gutterEl.scrollTop = codeEl.scrollTop; });
+gutterEl.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-goto]");
+  if (el) scrollResultsToLine(parseInt(el.dataset.goto, 10));
+});
 renderGutter();
+
+/* jump from a gutter marker to the matching finding card */
+function scrollResultsToLine(line) {
+  const card = resultsEl.querySelector(`.card[data-line="${line}"]`);
+  if (!card) return;
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  card.classList.add("flash");
+  setTimeout(() => card.classList.remove("flash"), 1100);
+}
 
 function jumpToLine(line) {
   const lh = parseFloat(getComputedStyle(codeEl).lineHeight);
@@ -45,7 +68,49 @@ $("file-input").addEventListener("change", async (e) => {
   $("filename").value = f.name;
   const ext = (f.name.split(".").pop() || "").toLowerCase();
   if (EXT_TO_LANG[ext]) $("language").value = EXT_TO_LANG[ext];
+  findingLines.clear();
   renderGutter();
+});
+
+/* ---------------- "Try an example" ---------------- */
+const EXAMPLES = {
+  py: 'import hashlib, subprocess\n\n# Calcualte the md5 hash for the recieved data\ndef process(data, cache={}):\n    h = hashlib.md5(data).hexdigest()\n    if h == None:\n        return None\n    subprocess.call("echo " + h, shell=True)\n    return h\n',
+  c: '#include <stdio.h>\n#include <string.h>\n\nint main(void) {\n  char buf[16];\n  gets(buf);            /* unbounded read */\n  char dst[8];\n  strcpy(dst, buf);     /* no bounds check */\n  return 0;\n}\n',
+  cpp: '#include <cstddef>\nusing namespace std;\n\nint* make() {\n  int* p = new int(5);\n  if (p == NULL) { return NULL; }\n  return p;\n}\n',
+  java: 'public class Svc {\n  String check(String a, String b) {\n    System.out.println("checking");\n    if (a == b) { return "same"; }\n    try { return a.trim(); } catch (Exception e) { return ""; }\n  }\n}\n',
+  ts: 'function parse(input: any): number {\n  console.log(input);\n  if (input == null) { return 0; }\n  return input.length;\n}\n',
+  js: 'function parse(input) {\n  console.log(input);\n  if (input == null) { return 0; }\n  return eval(input);\n}\n',
+};
+$("example-btn").addEventListener("click", () => {
+  const lang = $("language").value;
+  codeEl.value = EXAMPLES[lang] || EXAMPLES.py;
+  $("filename").value = "example." + lang;
+  findingLines.clear();
+  renderGutter();
+});
+
+/* ---------------- keyboard shortcuts ---------------- */
+document.addEventListener("keydown", (e) => {
+  // Cmd/Ctrl+Enter runs a review from anywhere (incl. the editor)
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    e.preventDefault();
+    if (!reviewBtn.disabled) reviewBtn.click();
+    return;
+  }
+  // j / k step through findings — but not while typing in a field
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "textarea" || tag === "input" || tag === "select") return;
+  if (e.key !== "j" && e.key !== "k") return;
+  const cards = [...resultsEl.querySelectorAll(".card")];
+  if (!cards.length) return;
+  e.preventDefault();
+  let idx = cards.findIndex((c) => c.classList.contains("active"));
+  cards.forEach((c) => c.classList.remove("active"));
+  if (idx < 0) idx = e.key === "j" ? 0 : cards.length - 1;
+  else idx = e.key === "j" ? Math.min(cards.length - 1, idx + 1) : Math.max(0, idx - 1);
+  const card = cards[idx];
+  card.classList.add("active");
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 
 /* ---------------- health pill ---------------- */
@@ -230,6 +295,7 @@ function renderLayers(layers) {
 }
 
 function renderResults(job) {
+  currentJob = job;
   const vs = job.violations;
   const bySev = {};
   vs.forEach((v) => { bySev[v.severity] = (bySev[v.severity] || 0) + 1; });
@@ -242,7 +308,20 @@ function renderResults(job) {
   const langMeta = job.language ? `<span>language <b>${esc(job.language)}</b></span>` : "";
   summaryEl.classList.remove("hidden");
 
+  // editor gutter markers: worst severity per line + a hover summary
+  findingLines.clear();
+  const byLine = new Map();
+  vs.forEach((v) => { if (!byLine.has(v.line)) byLine.set(v.line, []); byLine.get(v.line).push(v); });
+  byLine.forEach((items, ln) => {
+    let top = items[0];
+    items.forEach((v) => { if (SEV_RANK[v.severity] > SEV_RANK[top.severity]) top = v; });
+    findingLines.set(ln, { sev: top.severity,
+      title: items.map((v) => `${v.severity}: ${v.message}`).join("\n") });
+  });
+  renderGutter();
+
   if (!vs.length) {
+    filterbarEl.classList.add("hidden");
     summaryEl.innerHTML =
       `<div class="score-main"><div class="score-num clean">✓</div>
         <div class="score-label"><b>No issues found</b><br>${layersRun} layer${layersRun === 1 ? "" : "s"} ran clean</div></div>` +
@@ -268,39 +347,97 @@ function renderResults(job) {
      <div class="sev-legend">${legend}</div>
      <button id="copy-btn" class="btn btn-copy">Copy report</button>` +
     (langMeta || llmStat ? `<div class="score-meta">${langMeta}${langMeta && llmStat ? '<span class="sep">•</span>' : ""}${llmStat}</div>` : "");
+  const copyBtn = document.getElementById("copy-btn");
+  if (copyBtn) copyBtn.addEventListener("click", () => copyViolations(job, copyBtn));
 
-  // group violations by their enclosing function (fall back to file scope)
-  const groups = new Map();
-  vs.forEach((v) => {
-    const key = v.function || "(file scope)";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(v);
+  // fresh review resets any prior filter/sort state
+  filterState.hidden.clear();
+  filterState.fixableOnly = false;
+  filterState.sort = "location";
+  renderFilterBar(bySev, present);
+  renderFindings();
+}
+
+function renderFilterBar(bySev, present) {
+  filterbarEl.classList.remove("hidden");
+  const fixable = currentJob.violations.filter((v) => v.fix && v.fix.validated).length;
+  const chips = present.map((s) =>
+    `<button class="fchip" data-sev="${s}" aria-pressed="true">${s} <b>${bySev[s]}</b></button>`).join("");
+  filterbarEl.innerHTML =
+    `<span class="filter-label">Filter</span>${chips}` +
+    (fixable ? `<button class="fchip fix" data-fixable aria-pressed="false">🔧 fixable <b>${fixable}</b></button>` : "") +
+    `<label class="fsort">Sort
+       <select id="sort-sel">
+         <option value="location">by location</option>
+         <option value="severity">by severity</option>
+       </select></label>
+     <span class="filter-count" id="filter-count"></span>`;
+  filterbarEl.querySelectorAll("[data-sev]").forEach((b) => b.addEventListener("click", () => {
+    const s = b.dataset.sev;
+    const nowHidden = !filterState.hidden.has(s);
+    filterState.hidden[nowHidden ? "add" : "delete"](s);
+    b.setAttribute("aria-pressed", String(!nowHidden));
+    renderFindings();
+  }));
+  const fx = filterbarEl.querySelector("[data-fixable]");
+  if (fx) fx.addEventListener("click", () => {
+    filterState.fixableOnly = !filterState.fixableOnly;
+    fx.setAttribute("aria-pressed", String(filterState.fixableOnly));
+    renderFindings();
   });
-  // order groups by the first violation's line
-  const ordered = [...groups.entries()].sort(
-    (a, b) => a[1][0].line - b[1][0].line);
+  const ss = filterbarEl.querySelector("#sort-sel");
+  if (ss) ss.addEventListener("change", () => { filterState.sort = ss.value; renderFindings(); });
+}
 
-  resultsEl.innerHTML =
+function passesFilter(v) {
+  if (filterState.hidden.has(v.severity)) return false;
+  if (filterState.fixableOnly && !(v.fix && v.fix.validated)) return false;
+  return true;
+}
+
+function renderFindings() {
+  const job = currentJob;
+  const vs = job.violations.filter(passesFilter);
+  const banners =
     (job.notice ? `<div class="banner">${esc(job.notice)}</div>` : "") +
     (job.stats && job.stats.llm_capped
       ? `<div class="banner">${job.stats.llm_capped} lower-severity LLM finding(s) not shown (capped for performance on this file).</div>` : "") +
     (job.llm_available ? "" :
-    '<div class="banner">llama-server offline — showing deterministic findings only; no LLM fixes generated.</div>') +
-    ordered.map(([fn, items]) => {
+    '<div class="banner">llama-server offline — showing deterministic findings only; no LLM fixes generated.</div>');
+
+  let body;
+  if (!vs.length) {
+    body = '<div class="empty-state"><p class="dim">No findings match the current filters.</p></div>';
+  } else if (filterState.sort === "severity") {
+    const sorted = [...vs].sort((a, b) =>
+      (SEV_RANK[b.severity] - SEV_RANK[a.severity]) || (a.line - b.line));
+    body = sorted.map(cardHTML).join("");
+  } else {
+    const groups = new Map();
+    vs.forEach((v) => {
+      const key = v.function || "(file scope)";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(v);
+    });
+    const ordered = [...groups.entries()].sort((a, b) => a[1][0].line - b[1][0].line);
+    body = ordered.map(([fn, items]) => {
       const label = fn === "(file scope)" ? "(file scope)" : `${esc(fn)}()`;
       return `<div class="fn-group">
         <div class="fn-header">${label} <span class="dim">${items.length} finding${items.length === 1 ? "" : "s"}</span></div>
         ${items.map(cardHTML).join("")}
       </div>`;
     }).join("");
+  }
+  resultsEl.innerHTML = banners + body;
 
-  // wire up events
-  resultsEl.querySelectorAll("[data-line]").forEach((el) =>
+  const total = job.violations.length;
+  const fc = document.getElementById("filter-count");
+  if (fc) fc.textContent = vs.length === total ? `${total} shown` : `${vs.length} of ${total} shown`;
+
+  resultsEl.querySelectorAll(".line-link[data-line]").forEach((el) =>
     el.addEventListener("click", () => jumpToLine(parseInt(el.dataset.line, 10))));
   resultsEl.querySelectorAll("[data-apply]").forEach((el) =>
     el.addEventListener("click", () => applyFix(job, el.dataset.apply)));
-  const copyBtn = document.getElementById("copy-btn");
-  if (copyBtn) copyBtn.addEventListener("click", () => copyViolations(job, copyBtn));
 }
 
 function copyViolations(job, btn) {
@@ -376,7 +513,7 @@ function cardHTML(v) {
     citeHTML = `<div class="citation"><div class="cite-src">📖 Guideline${src ? " — " + esc(src) : ""}</div>
       <div class="cite-quote">${esc(c.quote)}</div></div>`;
   }
-  return `<div class="card sev-${v.severity}">
+  return `<div class="card sev-${v.severity}" data-line="${v.line}">
     <div class="card-head">
       <span class="sev-tag ${v.severity}">${esc(v.severity)}</span>
       <span class="badge badge-${v.layer}">${v.layer}</span>
