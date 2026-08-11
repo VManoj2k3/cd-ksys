@@ -10,6 +10,7 @@ carries a Citation back to the exact rule text + source document.
 from __future__ import annotations
 
 import asyncio
+import re
 
 from backend.app_config import CFG
 from backend.layers.llm_review import _SEV, _anchor, _numbered, _prompt
@@ -44,6 +45,31 @@ VERIFY_SCHEMA = {
     "properties": {"confirmed": {"type": "boolean"}, "reason": {"type": "string"}},
     "required": ["confirmed", "reason"],
 }
+
+
+# PDF text extraction leaves artifacts — bullet/box glyphs mapped into the
+# private-use area, the replacement char, and control codes. Strip them so a
+# cited quote reads cleanly instead of showing tofu boxes.
+_ARTIFACT = re.compile(
+    "[\u0000-\u0008\u000b\u000c\u000e-\u001f"      # control codes
+    "\ufffd\u2022\u25a0-\u25ff\u2610-\u2612\ue000-\uf8ff]")  # tofu/boxes/PUA
+
+
+def _display_quote(text: str, limit: int = 240) -> str:
+    """A clean, human-readable excerpt of a retrieved rule for the citation:
+    artifacts removed, trimmed on a word boundary, and marked with an ellipsis
+    when it begins or ends mid-sentence (chunk boundaries rarely align)."""
+    t = " ".join(_ARTIFACT.sub(" ", text or "").split())
+    if not t:
+        return ""
+    tail = len(t) > limit
+    if tail:
+        t = t[:limit].rsplit(" ", 1)[0].rstrip(",;:.")
+    if t[:1].islower():          # started mid-sentence
+        t = "…" + t
+    if tail:
+        t = t + " …"
+    return t
 
 
 def _format_rules(rules: list[dict], max_chars: int) -> str:
@@ -136,7 +162,7 @@ async def run_guideline_review(code: str, filename: str, stats: dict, plugin,
                 collection_name=str(rule.get("collection_name") or ""),
                 source=str(rule.get("source") or ""),
                 page=rule.get("page"),
-                quote=" ".join((rule.get("text") or "").split())[:300],
+                quote=_display_quote(rule.get("text") or ""),
             ),
         ))
     stats["guideline_rejected_bad_anchor"] = rejected_anchor

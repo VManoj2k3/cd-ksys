@@ -14,6 +14,12 @@ from backend.rag import store
 from backend.rag.embedder import get_embedder
 
 _WS = re.compile(r"[ \t]+")
+# PDF extraction artifacts: control codes, the replacement char, and bullet/box
+# glyphs that get mapped into the private-use area. Strip so chunks (and the
+# cited quotes drawn from them) read as clean text, not tofu boxes.
+_ARTIFACT = re.compile(
+    "[\u0000-\u0008\u000b\u000c\u000e-\u001f"
+    "\ufffd\u2022\u25a0-\u25ff\u2610-\u2612\ue000-\uf8ff]")
 
 
 def extract_pdf_text(pdf_bytes: bytes) -> list[tuple[int, str]]:
@@ -35,7 +41,7 @@ def extract_pdf_text(pdf_bytes: bytes) -> list[tuple[int, str]]:
 
 
 def _clean(text: str) -> str:
-    text = text.replace("\r", "\n")
+    text = _ARTIFACT.sub(" ", text.replace("\r", "\n"))
     lines = [_WS.sub(" ", ln).strip() for ln in text.split("\n")]
     # collapse runs of blank lines to paragraph breaks
     out, blank = [], False
