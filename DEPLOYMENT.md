@@ -156,6 +156,38 @@ environment can confirm, in order:
    -d --build` → rollback works; confirm audit lines appear per login and
    review, with no source code in them.
 
+## Phase 2 — guideline collections (RAG)
+
+Enabled by default (`rag.enabled: true`). Users upload coding-standard **PDFs**
+in the **Collections** tab; the Review page's **"Check against guidelines"**
+toggle then flags code that breaks those rules, each finding citing the exact
+rule. Collections are **per-user private** and stored on disk.
+
+- **Persistence (important):** collections live in `/app/data` inside the
+  container, bind-mounted to `./rag-data` on the host (see the compose file).
+  Back this directory up; deleting it deletes everyone's uploaded guidelines.
+- **Embeddings — pick your quality/effort trade-off (`rag.embedder.backend`):**
+  - `hash` (default): pure-Python, offline, zero setup. Retrieval is
+    lexical (keyword-overlap) — fine for rules whose wording overlaps the
+    code, weaker on paraphrased rules. Good enough to pilot immediately.
+  - `llama` (recommended for production): real semantic retrieval from a
+    local embedding model. Run a second llama.cpp server with a small
+    embedding GGUF (e.g. `nomic-embed-text`, `bge-small`) exposing
+    `/v1/embeddings`, then set:
+    ```yaml
+    rag:
+      embedder:
+        backend: llama
+        base_url: http://127.0.0.1:8090/v1
+        model: nomic-embed-text
+    ```
+    The embedding model runs on CPU or GPU and stays fully on-prem. Re-index
+    (re-upload) collections after switching backends — vectors from different
+    embedders are not comparable (the store skips mismatched ones
+    automatically).
+- **Limits:** `rag.max_collections_per_user`, `rag.max_pdf_mb`. PDFs must
+  contain extractable text (scanned-image PDFs need OCR first — not built in).
+
 ## Known limits (before wide rollout)
 - LLM findings are high-precision but not 100% recall; AUTOSAR is **guided,
   not certified** — not a compliance sign-off tool.

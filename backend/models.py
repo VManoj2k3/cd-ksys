@@ -13,6 +13,16 @@ class Layer(str, Enum):
     SECURITY = "security"
     HARDCODE = "hardcode"
     LLM = "llm"
+    GUIDELINE = "guideline"   # Phase 2: RAG violation against an uploaded rule
+
+
+class Citation(BaseModel):
+    """The guideline rule a GUIDELINE-layer violation was checked against."""
+    collection: str = ""       # collection id
+    collection_name: str = ""
+    source: str = ""           # document filename
+    page: Optional[int] = None
+    quote: str = ""            # the retrieved rule text (trimmed)
 
 
 class Severity(str, Enum):
@@ -44,6 +54,7 @@ class Violation(BaseModel):
     snippet: str = ""
     message: str
     suggestion: str = ""
+    tool: str = ""       # which engine produced it (codespell/ruff/bandit/LLM/…)
     function: str = ""   # enclosing function/method name, for UI grouping
     fix: Optional[Fix] = None
     # provenance for trust: deterministic layers are marked verified by construction
@@ -53,6 +64,8 @@ class Violation(BaseModel):
     # when no validated fix could be produced: which gate rejected each attempt
     # (diagnosis for fix coverage — shown in UI and accuracy reports)
     fix_notes: str = ""
+    # GUIDELINE layer only: the uploaded rule this violation was judged against
+    citation: Optional[Citation] = None
 
 
 class LayerStatus(BaseModel):
@@ -75,3 +88,7 @@ class ReviewJob(BaseModel):
     llm_available: bool = True
     notice: str = ""     # non-fatal advisory shown to the user (e.g. generated file)
     stats: dict = Field(default_factory=dict)
+    # ---- Phase 2 (RAG) — additive; empty/off means pure Phase 1 review ----
+    user: str = ""                 # owner, for scoping private collections
+    rag_enabled: bool = False      # the review-page toggle
+    collection_ids: list[str] = Field(default_factory=list)  # selected collections

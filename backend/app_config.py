@@ -194,6 +194,24 @@ def validate_config(cfg: Cfg) -> tuple[list[str], list[str]]:
     except (TypeError, ValueError):
         pass
 
+    # ---- rag (Phase 2) ----
+    if cfg.get("rag.enabled", False):
+        backend = str(cfg.get("rag.embedder.backend", "hash")).lower()
+        if backend not in ("hash", "llama"):
+            errors.append("rag.embedder.backend: must be 'hash' or 'llama', "
+                          f"got {backend!r}")
+        if backend == "llama" and not cfg.get("rag.embedder.base_url", ""):
+            errors.append("rag.embedder.base_url required when "
+                          "rag.embedder.backend=llama")
+        for key in ("rag.max_collections_per_user", "rag.max_pdf_mb",
+                    "rag.ingest.chunk_chars", "rag.review.rules_per_chunk",
+                    "rag.embedder.hash_dim"):
+            _pos_int(cfg, key, errors)
+        if backend == "hash":
+            warnings.append("rag.embedder.backend=hash is a crude offline "
+                            "embedder — set it to 'llama' with a local "
+                            "embedding model for production RAG quality")
+
     # ---- logging ----
     level = str(cfg.get("logging.level", "info")).lower()
     if level not in _LOG_LEVELS:

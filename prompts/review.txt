@@ -12,7 +12,8 @@ Rules — follow exactly:
    a dedicated spell layer handles those.
 3. For each violation give the EXACT line number and copy the EXACT code text of that line into "snippet" (copy it character-for-character from the numbered listing, without the line number prefix).
 4. "severity" must be one of: low, medium, high, critical.
-5. If there are no violations, return {{"violations": []}}.
+5. Be COMPLETE: report EVERY distinct violation you are certain of. A function may contain several different problems, and the same kind of problem may recur on multiple lines — list ALL of them as separate entries, each with its own line number. Scan the entire listing top to bottom; do not stop after the first finding. This does NOT lower rule 1 — only add findings you are certain are real.
+6. If there are no violations, return {{"violations": []}}.
 
 Return JSON only, matching this schema:
 {{"violations": [{{"line": <int>, "snippet": "<exact code on that line>", "category": "<one of the allowed categories>", "severity": "<low|medium|high|critical>", "message": "<what is wrong and why, one or two sentences>"}}]}}

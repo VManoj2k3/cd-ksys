@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cd koosys — Guideline Collections</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">⌘</span>
+    <h1>Cd koosys <span class="sub">code review</span></h1>
+  </div>
+  <div class="header-right">
+    <nav class="topnav"><a href="/" class="navlink">Review</a>
+      <a href="/collections" class="navlink active">Collections</a></nav>
+    <span id="userbox" class="hidden"><span id="username-label"></span>
+      <button id="logout-btn" class="btn">Sign out</button></span>
+  </div>
+</header>
+
+<main class="collections-main">
+  <section class="coll-intro">
+    <h2>Guideline collections</h2>
+    <p class="dim">Upload your coding-standard PDFs (MISRA, AUTOSAR, an internal
+      style guide…). When you turn on <b>Check against guidelines</b> on the
+      Review page and pick a collection, the reviewer flags code that breaks
+      your specific rules — each finding cites the exact rule. Collections are
+      private to you and never leave the server.</p>
+    <div class="coll-create">
+      <input id="new-name" type="text" placeholder="New collection name (e.g. MISRA-C 2012)" maxlength="80">
+      <button id="create-btn" class="btn btn-primary">Create collection</button>
+    </div>
+    <div id="coll-msg" class="coll-msg"></div>
+  </section>
+
+  <section id="coll-list" class="coll-list">
+    <div class="empty-state"><p>Loading your collections…</p></div>
+  </section>
+</main>
+
+<script src="/static/collections.js"></script>
+</body>
+</html>

@@ -33,6 +33,17 @@ files:
       - {name: mutate-while-iterating, line: 30, layer: llm}
       - {name: index-empty-list, line: 37, layer: llm}
 
+  # same 5 bugs, a different PEP8-clean style (while-loops, index iteration) —
+  # LLM recall must hold regardless of coding style
+  - path: eval/py_semantic_bugs_style2.py
+    language: py
+    expect:
+      - {name: div-by-zero-empty-series, line: 14, layer: llm}
+      - {name: off-by-one-while, line: 21, layer: llm}
+      - {name: unclosed-descriptor, line: 29, layer: llm}
+      - {name: mutate-while-iterating-2, line: 37, layer: llm}
+      - {name: index-empty-records, line: 46, layer: llm}
+
   - {path: stress/clean_tricky.py, language: py, clean: true}
   - {path: stress/clean_async.py, language: py, clean: true}
 

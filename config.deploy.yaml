@@ -18,6 +18,17 @@ logging:
   level: info
   format: json             # one JSON object per line for log shippers
 
+# Phase 2 (RAG guideline review). Collections persist in /app/data (mounted
+# to ./rag-data on the host — see docker-compose). Default embedder is the
+# offline "hash" one so it works out of the box; for real semantic retrieval
+# on the GPU box, run a local embedding model and switch to the "llama"
+# backend (see DEPLOYMENT.md "Phase 2 embeddings").
+rag:
+  enabled: true
+  data_dir: /app/data/rag
+  embedder:
+    backend: hash          # -> "llama" + base_url/model for production quality
+
 auth:
   mode: ldap
   cookie_secure: true      # served over HTTPS via the reverse proxy

@@ -32,6 +32,7 @@ services:
     volumes:
       - model-cache:/models          # persists the 12 GB GGUF across restarts
       - ./audit:/app/logs            # audit log on the host
+      - ./rag-data:/app/data         # Phase 2: guideline collections (persist!)
       - ./config.deploy.yaml:/app/config.deploy.yaml:ro
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://127.0.0.1:8000/api/health"]

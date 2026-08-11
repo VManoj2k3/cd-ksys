@@ -89,10 +89,21 @@ metrics.describe("koosys_llm_available", "gauge",
                  "1 if llama-server is reachable, else 0")
 
 
+_RAG_ENABLED = bool(CFG.get("rag.enabled", False))
+_MAX_COLLECTIONS = int(CFG.get("rag.max_collections_per_user", 20))
+_MAX_PDF_BYTES = int(CFG.get("rag.max_pdf_mb", 25)) * 1024 * 1024
+
+
 class ReviewRequest(BaseModel):
     code: str
     filename: str = "snippet.py"
     language: str = ""   # explicit UI selection; overrides filename inference
+    rag_enabled: bool = False           # Phase 2 toggle
+    collection_ids: list[str] = []      # selected guideline collections
+
+
+class CollectionCreate(BaseModel):
+    name: str = ""
 
 
 class LoginRequest(BaseModel):
@@ -268,7 +279,9 @@ def _evict_if_full() -> None:
         _job_tasks.pop(jid, None)
 
 
-def _start_job(code: str, filename: str, language: str, user: str) -> ReviewJob:
+def _start_job(code: str, filename: str, language: str, user: str,
+               rag_enabled: bool = False,
+               collection_ids: list[str] | None = None) -> ReviewJob:
     _gc_jobs()
     if len(code.encode()) > _MAX_KB * 1024:
         raise HTTPException(413, f"File exceeds {_MAX_KB} KB limit")
@@ -289,13 +302,17 @@ def _start_job(code: str, filename: str, language: str, user: str) -> ReviewJob:
     if len(_jobs) >= _MAX_STORED:
         raise HTTPException(503, "Server job store is full — try again shortly")
 
+    rag_on = bool(rag_enabled) and _RAG_ENABLED
+    cids = [c for c in (collection_ids or []) if isinstance(c, str)][:10]
     job = ReviewJob(job_id=uuid.uuid4().hex, filename=filename, code=code,
-                    requested_language=language)
+                    requested_language=language, user=user,
+                    rag_enabled=rag_on, collection_ids=cids if rag_on else [])
     _jobs[job.job_id] = job
     _job_times[job.job_id] = time.time()
     _job_owner[job.job_id] = user
     audit.record("review", user, time.time(), job_id=job.job_id,
-                 filename=filename, language=language, size_bytes=len(code.encode()))
+                 filename=filename, language=language, size_bytes=len(code.encode()),
+                 rag=rag_on, collections=len(cids) if rag_on else 0)
 
     max_s = int(CFG.get("review_max_seconds", 600))
 
@@ -334,8 +351,79 @@ def _start_job(code: str, filename: str, language: str, user: str) -> ReviewJob:
 
 @app.post("/api/review")
 async def submit_review(req: ReviewRequest, user: str = Depends(require_user)):
-    job = _start_job(req.code, req.filename, req.language, user)
+    job = _start_job(req.code, req.filename, req.language, user,
+                     rag_enabled=req.rag_enabled, collection_ids=req.collection_ids)
     return {"job_id": job.job_id}
+
+
+# ---------------------------------------------------------------- collections
+def _require_rag() -> None:
+    if not _RAG_ENABLED:
+        raise HTTPException(404, "Guideline collections are disabled")
+
+
+@app.get("/api/collections")
+async def list_collections(user: str = Depends(require_user)):
+    _require_rag()
+    from backend.rag import store
+    return {"collections": store.list_collections(user)}
+
+
+@app.post("/api/collections")
+async def create_collection(req: CollectionCreate, user: str = Depends(require_user)):
+    _require_rag()
+    from backend.rag import store
+    if len(store.list_collections(user)) >= _MAX_COLLECTIONS:
+        raise HTTPException(400, f"Collection limit reached ({_MAX_COLLECTIONS})")
+    if not req.name.strip():
+        raise HTTPException(400, "Collection name required")
+    meta = store.create_collection(user, req.name)
+    audit.record("collection_create", user, time.time(), collection=meta["id"])
+    return meta
+
+
+@app.delete("/api/collections/{collection_id}")
+async def delete_collection(collection_id: str, user: str = Depends(require_user)):
+    _require_rag()
+    from backend.rag import store
+    try:
+        ok = store.delete_collection(user, collection_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid collection id") from None
+    if not ok:
+        raise HTTPException(404, "Unknown collection")
+    audit.record("collection_delete", user, time.time(), collection=collection_id)
+    return {"ok": True}
+
+
+@app.post("/api/collections/{collection_id}/upload")
+async def upload_guideline(collection_id: str, file: UploadFile = File(...),
+                           user: str = Depends(require_user)):
+    _require_rag()
+    from backend.rag import ingest, store
+    try:
+        exists = store.get_collection(user, collection_id) is not None
+    except ValueError:
+        raise HTTPException(400, "Invalid collection id") from None
+    if not exists:
+        raise HTTPException(404, "Unknown collection")
+    name = file.filename or "guideline.pdf"
+    if not name.lower().endswith(".pdf"):
+        raise HTTPException(400, "Only PDF guideline documents are supported")
+    raw = await file.read(_MAX_PDF_BYTES + 1)
+    if len(raw) > _MAX_PDF_BYTES:
+        raise HTTPException(413, f"PDF exceeds {_MAX_PDF_BYTES // (1024*1024)} MB limit")
+    try:
+        n = await asyncio.to_thread(ingest.ingest_pdf, user, collection_id, name, raw)
+    except Exception as exc:  # noqa: BLE001 — surface a clean error
+        log.exception("ingest failed")
+        raise HTTPException(400, f"Could not index PDF: {str(exc)[:150]}") from None
+    if n == 0:
+        raise HTTPException(400, "No extractable text found in the PDF "
+                                 "(is it a scanned image?)")
+    audit.record("collection_upload", user, time.time(),
+                 collection=collection_id, filename=name, chunks=n)
+    return {"ok": True, "chunks": n, "collection": store.get_collection(user, collection_id)}
 
 
 @app.post("/api/review/upload")
@@ -374,6 +462,7 @@ async def health():
         "languages": language_names(),
         "extensions": list(_ALLOWED_EXT),
         "auth_mode": _AUTH_MODE,
+        "rag_enabled": _RAG_ENABLED,
     }
 
 
@@ -420,6 +509,15 @@ async def index(request: Request):
     if _AUTH_MODE != "none" and auth.current_user(request) is None:
         return RedirectResponse("/login")
     return FileResponse(_FRONTEND / "index.html")
+
+
+@app.get("/collections")
+async def collections_page(request: Request):
+    if not _RAG_ENABLED:
+        return RedirectResponse("/")
+    if _AUTH_MODE != "none" and auth.current_user(request) is None:
+        return RedirectResponse("/login")
+    return FileResponse(_FRONTEND / "collections.html")
 
 
 app.mount("/static", StaticFiles(directory=str(_FRONTEND)), name="static")

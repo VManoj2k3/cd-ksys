@@ -1,0 +1,18 @@
+You are a careful senior {language} reviewer double-checking one claimed coding-guideline violation. Keep GENUINE rule violations; drop anything that does not clearly break the stated rule.
+
+The rule (from the team's guidelines):
+"{rule}"
+
+Claimed violation:
+- Line {line}: {snippet}
+- Claim: {message}
+
+Code context (numbered lines):
+{context}
+
+confirmed=true ONLY if the code on/around that line genuinely breaks THIS SPECIFIC rule. confirmed=false if: the rule does not actually apply here, the code already complies, the claim misreads the code or the rule, or it is a general style/opinion not covered by the rule.
+
+Do not confirm a violation just because the code could be improved — it must break THIS rule.
+
+Return JSON only:
+{{"confirmed": <true|false>, "reason": "<one sentence>"}}

@@ -85,6 +85,11 @@ def main() -> None:
     overlay.write_text(
         "server:\n"
         "  host: 127.0.0.1\n"
+        # acceptance submits many reviews back to back (accuracy_eval + the
+        # multi-language RAG smoke); lift the per-user cap so the eval itself is
+        # never throttled (production keeps the conservative default)
+        "  reviews_per_user_per_minute: 240\n"
+        "  max_active_jobs: 60\n"
         "logging:\n"
         "  level: info\n"
         "kaggle:\n"
@@ -115,11 +120,22 @@ def main() -> None:
             EVAL_REPORT=str(OUT / "last_report.json"),
             PYTHONPATH=str(APP),
         )
+        # if the real-world public-code sample dataset is attached, review it
+        # through the full pipeline (report-only) to measure LLM FP on code
+        # neither the tool nor the tests were written against
+        wild = Path("/kaggle/input/koosys-wild-sample")
+        if wild.exists():
+            env["EVAL_EXTRA_DIR"] = str(wild)
+            print(f"wild-sample dataset mounted -> EVAL_EXTRA_DIR={wild}")
         # run by file path — immune to `tests` package shadowing from any
         # site-packages on the host image (accuracy_eval has no repo imports)
         rc = subprocess.run(
             [sys.executable, str(APP / "tests" / "accuracy_eval.py")],
             env=env, cwd=APP).returncode
+        # Phase 2: validate the guideline (RAG) layer against the real model
+        print("\n===== RAG guideline smoke (real LLM) =====", flush=True)
+        subprocess.run([sys.executable, str(APP / "tests" / "rag_smoke.py")],
+                       env=env, cwd=APP)
     finally:
         # ALWAYS ship the service logs — a boot failure without
         # llama-server.log is undiagnosable from the kernel log alone
